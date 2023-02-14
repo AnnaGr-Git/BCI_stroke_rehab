@@ -14,93 +14,162 @@ from pylsl import StreamInlet, resolve_stream
 from src.data.signal_processing import apply_mix, bandpass, logvar
 
 
-USER = 'anna'  # This is the username
+USER = "anna"  # This is the username
 BOX_MOVE = "random"  # random or model
 
 font = cv2.FONT_HERSHEY_COMPLEX
 
 
-
 ## ------------ FUNCTIONS ------------------------------
 # Create game
 def create_game_settings(WIDTH, HEIGHT, SQ_SIZE):
+    '''
+    Create parameters and settings of objects of the game recording visualization.
+            Parameters:
+                    WIDTH (int): Width of the game
+                    HEIGHT (int): Height of the game
+                    SQ_SIZE (int): Size of the moving cube
+
+            Returns:
+                    None
+    '''
     game_settings = {}
-    game_settings['square_1'] = {'x1': int(int(WIDTH) / 4 - int(SQ_SIZE / 2)),
-                'x2': int(int(WIDTH) / 4 + int(SQ_SIZE / 2)),
-                'y1': int(int(HEIGHT) / 10 * 9 - int(SQ_SIZE / 2)),
-                'y2': int(int(HEIGHT) / 10 * 9 + int(SQ_SIZE / 2))}
+    game_settings["square_1"] = {
+        "x1": int(int(WIDTH) / 4 - int(SQ_SIZE / 2)),
+        "x2": int(int(WIDTH) / 4 + int(SQ_SIZE / 2)),
+        "y1": int(int(HEIGHT) / 10 * 9 - int(SQ_SIZE / 2)),
+        "y2": int(int(HEIGHT) / 10 * 9 + int(SQ_SIZE / 2)),
+    }
 
-    game_settings['square_2'] = {'x1': int(int(WIDTH) / 4 * 3 - int(SQ_SIZE / 2)),
-                'x2': int(int(WIDTH) / 4 * 3 + int(SQ_SIZE / 2)),
-                'y1': int(int(HEIGHT) / 10 * 9 - int(SQ_SIZE / 2)),
-                'y2': int(int(HEIGHT) / 10 * 9 + int(SQ_SIZE / 2))}
+    game_settings["square_2"] = {
+        "x1": int(int(WIDTH) / 4 * 3 - int(SQ_SIZE / 2)),
+        "x2": int(int(WIDTH) / 4 * 3 + int(SQ_SIZE / 2)),
+        "y1": int(int(HEIGHT) / 10 * 9 - int(SQ_SIZE / 2)),
+        "y2": int(int(HEIGHT) / 10 * 9 + int(SQ_SIZE / 2)),
+    }
 
-    color_box_1 = [16/255, 128/255, 255/255]    # dark blue
-    color_box_2 = [255/255, 95/255, 1/255]    # dark orange
-    game_settings['box_1'] = np.ones((game_settings['square_1']['y2'] - game_settings['square_1']['y1'], game_settings['square_1']['x2'] - game_settings['square_1']['x1'], 3)) * np.array(color_box_1)
-    game_settings['box_2'] = np.ones((game_settings['square_2']['y2'] - game_settings['square_2']['y1'], game_settings['square_2']['x2'] - game_settings['square_2']['x1'], 3)) * np.array(color_box_2)
+    color_box_1 = [16 / 255, 128 / 255, 255 / 255]  # dark blue
+    color_box_2 = [255 / 255, 95 / 255, 1 / 255]  # dark orange
+    game_settings["box_1"] = np.ones(
+        (
+            game_settings["square_1"]["y2"] - game_settings["square_1"]["y1"],
+            game_settings["square_1"]["x2"] - game_settings["square_1"]["x1"],
+            3,
+        )
+    ) * np.array(color_box_1)
+    game_settings["box_2"] = np.ones(
+        (
+            game_settings["square_2"]["y2"] - game_settings["square_2"]["y1"],
+            game_settings["square_2"]["x2"] - game_settings["square_2"]["x1"],
+            3,
+        )
+    ) * np.array(color_box_2)
 
-    color_line_1 = [144/255, 196/255, 255/255]    # bright blue
-    color_line_2 = [255/255, 177/255, 131/255]    # bright orange
+    color_line_1 = [144 / 255, 196 / 255, 255 / 255]  # bright blue
+    color_line_2 = [255 / 255, 177 / 255, 131 / 255]  # bright orange
 
-    game_settings['vertical_line'] = np.ones((HEIGHT, 10, 3)) * np.array(color_line_1)
-    game_settings['vertical_line_2'] = np.ones((HEIGHT, 10, 3)) * np.array(color_line_2)
+    game_settings["vertical_line"] = np.ones((HEIGHT, 10, 3)) * np.array(color_line_1)
+    game_settings["vertical_line_2"] = np.ones((HEIGHT, 10, 3)) * np.array(color_line_2)
     # game_settings['horizontal_line'] = np.ones((10, WIDTH, 3)) * np.random.uniform(size=(3,))
 
-    img = cv2.imread('C:/Users/annag/OneDrive - Danmarks Tekniske Universitet/Semester_04/Special_Course_BCI/03_code/BCI_stroke_rehab/data/external/arm.png')/255
+    img = (cv2.imread("C:/Users/annag/OneDrive - Danmarks Tekniske Universitet/Semester_04/Special_Course_BCI/03_code/BCI_stroke_rehab/data/external/arm.png")/ 255)
     # Downscale image
-    scale_percent = 40 # percent of original size
+    scale_percent = 40  # percent of original size
     width = int(img.shape[1] * scale_percent / 100)
     height = int(img.shape[0] * scale_percent / 100)
     dim = (width, height)
-    game_settings['img_arm'] = cv2.resize(img, dim, interpolation = cv2.INTER_AREA)
+    game_settings["img_arm"] = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
 
-    game_settings['WIDTH'] = WIDTH
-    game_settings['HEIGHT'] = HEIGHT
-    game_settings['SQ_SIZE'] = SQ_SIZE
-    
+    game_settings["WIDTH"] = WIDTH
+    game_settings["HEIGHT"] = HEIGHT
+    game_settings["SQ_SIZE"] = SQ_SIZE
+
     return game_settings
 
 
 def environment(game_settings):
-    env = np.zeros((game_settings['HEIGHT'], game_settings['WIDTH'], 3))
-    env[:, game_settings['WIDTH'] // 4 - 5:game_settings['WIDTH'] // 4 + 5, :] = game_settings['vertical_line']
-    env[:, game_settings['WIDTH'] // 4 * 3 - 5:game_settings['WIDTH'] // 4 * 3 + 5, :] = game_settings['vertical_line_2']
-    env[game_settings['square_1']['y1']:game_settings['square_1']['y2'], game_settings['square_1']['x1']:game_settings['square_1']['x2'], :] = game_settings['box_1']
-    env[game_settings['square_2']['y1']:game_settings['square_2']['y2'], game_settings['square_2']['x1']:game_settings['square_2']['x2'], :] = game_settings['box_2']
+    """ Create image of game environemt based on settings """
+
+    env = np.zeros((game_settings["HEIGHT"], game_settings["WIDTH"], 3))
+    env[
+        :, game_settings["WIDTH"] // 4 - 5 : game_settings["WIDTH"] // 4 + 5, :
+    ] = game_settings["vertical_line"]
+    env[
+        :, game_settings["WIDTH"] // 4 * 3 - 5 : game_settings["WIDTH"] // 4 * 3 + 5, :
+    ] = game_settings["vertical_line_2"]
+    env[
+        game_settings["square_1"]["y1"] : game_settings["square_1"]["y2"],
+        game_settings["square_1"]["x1"] : game_settings["square_1"]["x2"],
+        :,
+    ] = game_settings["box_1"]
+    env[
+        game_settings["square_2"]["y1"] : game_settings["square_2"]["y2"],
+        game_settings["square_2"]["x1"] : game_settings["square_2"]["x2"],
+        :,
+    ] = game_settings["box_2"]
     return env
 
 
 def update(pos, game_settings, actions):
+    """ Update game with the next task."""
     env = environment(game_settings)
 
     # Add arm image
-    shape = game_settings['img_arm'].shape
-    start_x = int(game_settings['WIDTH'] / 2 - 70)
-    start_y = int(game_settings['HEIGHT'] // 4 + 150)
-    env[start_y:start_y+shape[0], start_x:start_x+shape[1],:] = game_settings['img_arm']
-    
+    shape = game_settings["img_arm"].shape
+    start_x = int(game_settings["WIDTH"] / 2 - 70)
+    start_y = int(game_settings["HEIGHT"] // 4 + 150)
+    env[start_y : start_y + shape[0], start_x : start_x + shape[1], :] = game_settings[
+        "img_arm"
+    ]
+
     if actions[pos] == "right":
-        color = (255/255, 95/255, 1/255)
+        color = (255 / 255, 95 / 255, 1 / 255)
     elif actions[pos] == "left":
-        color = (16/255, 128/255, 255/255)
+        color = (16 / 255, 128 / 255, 255 / 255)
     else:
         color = (255, 255, 255)
-    cv2.putText(env, "Task " + str(pos) + ":", (int(game_settings['WIDTH'] / 2 - 70), int(game_settings['HEIGHT'] // 4)), font, 1, (255, 255, 255),2)  # text,coordinate,font,size of text,color,thickness of font
-    cv2.putText(env, str(actions[pos]), (int(game_settings['WIDTH'] / 2 - 70), int(game_settings['HEIGHT'] // 4 + 70)), font, 2, color,3)  # text,coordinate,font,size of text,color,thickness of font
+    cv2.putText(
+        env,
+        "Task " + str(pos) + ":",
+        (int(game_settings["WIDTH"] / 2 - 70), int(game_settings["HEIGHT"] // 4)),
+        font,
+        1,
+        (255, 255, 255),
+        2,
+    )  # text,coordinate,font,size of text,color,thickness of font
+    cv2.putText(
+        env,
+        str(actions[pos]),
+        (int(game_settings["WIDTH"] / 2 - 70), int(game_settings["HEIGHT"] // 4 + 70)),
+        font,
+        2,
+        color,
+        3,
+    )  # text,coordinate,font,size of text,color,thickness of font
 
-    cv2.imshow('', env)
+    cv2.imshow("", env)
     cv2.waitKey(500)
 
 
 def move(game_settings):
+    """ Move cube based on previous task and show relax-command"""
+
     env = environment(game_settings)
-    cv2.putText(env, "Relax ...", (int(game_settings['WIDTH'] / 2 - 70), int(game_settings['HEIGHT'] // 4)), font, 1, (255, 255, 255),2)  # text,coordinate,font,size of text,color,thickness of font
-    cv2.imshow('', env)
+    cv2.putText(
+        env,
+        "Relax ...",
+        (int(game_settings["WIDTH"] / 2 - 70), int(game_settings["HEIGHT"] // 4)),
+        font,
+        1,
+        (255, 255, 255),
+        2,
+    )  # text,coordinate,font,size of text,color,thickness of font
+    cv2.imshow("", env)
     cv2.waitKey(1000)
 
 
-def generate_random_actions(n:int=20):
+def generate_random_actions(n: int = 20):
+    """ Generate random sequence of n actions per side."""
     # Action to be performed
     actions = np.full(n, "right")
     actions = np.append(actions, np.full(n, "left"))
@@ -135,7 +204,7 @@ def predict_lda(input_lda, c, d, W_matrix):
     print("Predicting")
     point = input_process(input_lda, W_matrix)
     results = np.cross(point - d, c - d)
-    print(point,results)
+    print(point, results)
     # 1 left 0 right
     if results < 0:
         # above the line
@@ -147,7 +216,7 @@ def predict_lda(input_lda, c, d, W_matrix):
 
 
 ## ------------ MAIN ------------------------------
-def main(n_samples:int=20):
+def main(n_samples: int = 20):
     # Get game settings
     WIDTH = 800
     HEIGHT = 600
@@ -156,21 +225,26 @@ def main(n_samples:int=20):
     game_settings = create_game_settings(WIDTH, HEIGHT, SQ_SIZE)
 
     # Where data will be stored
-    date = datetime.today().strftime('%Y-%m-%d')
-    data_dir = "data/" + "raw/" + USER+ "/" + date
+    date = datetime.today().strftime("%Y-%m-%d")
+    data_dir = "data/" + "raw/" + USER + "/" + date
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
 
-    # Load model
+    # Load model if applied
     if BOX_MOVE == "model":
         MODEL_NAME = "models_07/NN/64.15-50epoch-1657286289-loss-0.64.model "
         model = tf.keras.models.load_model(MODEL_NAME)
 
-        with open("/home/nurife/BCI/IM/BCI/models_09/W_matrix/1657359658.pickle", "rb") as file:
+        with open(
+            "/home/nurife/BCI/IM/BCI/models_09/W_matrix/1657359658.pickle", "rb"
+        ) as file:
             W_load = pickle.load(file)
         W_matrix = W_load["W_matrix"]
 
-        with open("/home/nurife/BCI/IM/BCI/models_09/LDA/50.0_r_62.5_acc_1657359658.pickle", "rb") as file:
+        with open(
+            "/home/nurife/BCI/IM/BCI/models_09/LDA/50.0_r_62.5_acc_1657359658.pickle",
+            "rb",
+        ) as file:
             LDA_model = pickle.load(file)
         W = LDA_model["W"]
         b = LDA_model["b"]
@@ -182,23 +256,22 @@ def main(n_samples:int=20):
 
     # Get datastream: resolve an EEG stream on the lab network
     print("Looking for an EEG stream...")
-    streams = resolve_stream('type', 'EEG')
+    streams = resolve_stream("type", "EEG")
     # create a new inlet to read from the stream
     inlet = StreamInlet(streams[0])
 
-    # Get random actions to be performed
+    # Get random sequence of actions
     actions = generate_random_actions(n_samples)
 
     # Start recording
     total = 0
     left = 0
     right = 0
-    none = 0
     correct = 0
     channel_datas = []
     start = time.time()
     for j in range(len(actions)):
-        # Update Game
+        # Update Game with new task
         update(j, game_settings, actions)
         channel_data = {}
         time_stamps = [0]
@@ -219,37 +292,45 @@ def main(n_samples:int=20):
                 if first_timestamp == 0:
                     first_timestamp = timestamp
                 time_stamps.append(timestamp - first_timestamp)
-                print(timestamp-first_timestamp)
+                print(timestamp - first_timestamp)
 
         print("End recording Data")
+
+        # Transform data in df
         channels = DataFrame()
         channels["s"] = time_stamps[1:]
         channels["mrk"] = actions[j]
         for i in range(len(channel_data)):
             channels[i] = channel_data[i]
 
+        # Move box in video and show relax command
         if BOX_MOVE == "random":
             box = actions[j]
-            box_shift = int((0.8*game_settings['HEIGHT'])//n_samples)
+            box_shift = int((0.8 * game_settings["HEIGHT"]) // n_samples)
             if box == "left":
-                game_settings['square_1']['y1'] -= box_shift
-                game_settings['square_1']['y2'] -= box_shift
+                game_settings["square_1"]["y1"] -= box_shift
+                game_settings["square_1"]["y2"] -= box_shift
             elif box == "right":
-                game_settings['square_2']['y1'] -= box_shift
-                game_settings['square_2']['y2'] -= box_shift
+                game_settings["square_2"]["y1"] -= box_shift
+                game_settings["square_2"]["y2"] -= box_shift
 
         elif BOX_MOVE == "model":
-            choice = predict_lda(np.asarray(channels)[:460, 2:].astype('float32').transpose(), c, d, W_matrix)
+            choice = predict_lda(
+                np.asarray(channels)[:460, 2:].astype("float32").transpose(),
+                c,
+                d,
+                W_matrix,
+            )
 
             if choice == 1:
                 print(f"Action:{actions[j]} Moving:left")
-                game_settings['square_1']['y1'] -= 20
-                game_settings['square_1']['y2'] -= 20
+                game_settings["square_1"]["y1"] -= 20
+                game_settings["square_1"]["y2"] -= 20
                 left += 1
             elif choice == 0:
                 print(f"Action:{actions[j]} Moving:right")
-                game_settings['square_2']['y1'] -= 20
-                game_settings['square_2']['y2'] -= 20
+                game_settings["square_2"]["y1"] -= 20
+                game_settings["square_2"]["y2"] -= 20
                 right += 1
 
         move(game_settings)
@@ -273,8 +354,9 @@ def main(n_samples:int=20):
 
     with open("accuracies.csv", "a") as f:
         f.write(
-            f"{int(time.time())},{USER},{correct / total},{MODEL_NAME},{left / total},{right / total}\n")
+            f"{int(time.time())},{USER},{correct / total},{MODEL_NAME},{left / total},{right / total}\n"
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
