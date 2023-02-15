@@ -16,6 +16,7 @@ from src.data.signal_processing import apply_mix, bandpass, logvar
 
 USER = "anna"  # This is the username
 BOX_MOVE = "random"  # random or model
+TASK_TYPE = "arm"
 
 font = cv2.FONT_HERSHEY_COMPLEX
 
@@ -72,13 +73,16 @@ def create_game_settings(WIDTH, HEIGHT, SQ_SIZE):
     game_settings["vertical_line_2"] = np.ones((HEIGHT, 10, 3)) * np.array(color_line_2)
     # game_settings['horizontal_line'] = np.ones((10, WIDTH, 3)) * np.random.uniform(size=(3,))
 
-    img = (cv2.imread("C:/Users/annag/OneDrive - Danmarks Tekniske Universitet/Semester_04/Special_Course_BCI/03_code/BCI_stroke_rehab/data/external/arm.png")/ 255)
-    # Downscale image
-    scale_percent = 40  # percent of original size
-    width = int(img.shape[1] * scale_percent / 100)
-    height = int(img.shape[0] * scale_percent / 100)
-    dim = (width, height)
-    game_settings["img_arm"] = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
+    if TASK_TYPE == "arm":
+        img = (cv2.imread("C:/Users/annag/OneDrive - Danmarks Tekniske Universitet/Semester_04/Special_Course_BCI/03_code/BCI_stroke_rehab/data/external/arm.png")/ 255)
+        # Downscale image
+        scale_percent = 40  # percent of original size
+        width = int(img.shape[1] * scale_percent / 100)
+        height = int(img.shape[0] * scale_percent / 100)
+        dim = (width, height)
+        game_settings["img_task"] = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
+    else:
+        game_settings["img_task"] = np.zeros((3,3,3))
 
     game_settings["WIDTH"] = WIDTH
     game_settings["HEIGHT"] = HEIGHT
@@ -115,11 +119,11 @@ def update(pos, game_settings, actions):
     env = environment(game_settings)
 
     # Add arm image
-    shape = game_settings["img_arm"].shape
+    shape = game_settings["img_task"].shape
     start_x = int(game_settings["WIDTH"] / 2 - 70)
     start_y = int(game_settings["HEIGHT"] // 4 + 150)
     env[start_y : start_y + shape[0], start_x : start_x + shape[1], :] = game_settings[
-        "img_arm"
+        "img_task"
     ]
 
     if actions[pos] == "right":
@@ -166,6 +170,30 @@ def move(game_settings):
     )  # text,coordinate,font,size of text,color,thickness of font
     cv2.imshow("", env)
     cv2.waitKey(1000)
+
+def game_startscreen(game_settings):
+    """ Show inital screen of game before recording """
+    env = environment(game_settings)
+    cv2.putText(
+        env,
+        "To start the game:",
+        (int(game_settings["WIDTH"] / 3-20), int(game_settings["HEIGHT"] // 4)),
+        font,
+        1,
+        (255, 255, 255),
+        2,
+    )  # text,coordinate,font,size of text,color,thickness of font
+    cv2.putText(
+        env,
+        "Press ENTER ...",
+        (int(game_settings["WIDTH"] / 3-20), int(game_settings["HEIGHT"] // 4 + 70)),
+        font,
+        1,
+        (255, 255, 255),
+        2,
+    )  # text,coordinate,font,size of text,color,thickness of font
+    cv2.imshow("", env)
+    cv2.waitKey(0)
 
 
 def generate_random_actions(n: int = 20):
@@ -225,7 +253,7 @@ def main(n_samples: int = 20):
     game_settings = create_game_settings(WIDTH, HEIGHT, SQ_SIZE)
 
     # Where data will be stored
-    date = datetime.today().strftime("%Y-%m-%d")
+    date = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     data_dir = "data/" + "raw/" + USER + "/" + date
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
@@ -262,6 +290,10 @@ def main(n_samples: int = 20):
 
     # Get random sequence of actions
     actions = generate_random_actions(n_samples)
+
+    # Show inital screen of game for 20 s
+    game_startscreen(game_settings)
+    #time.sleep(20)
 
     # Start recording
     total = 0
@@ -337,7 +369,7 @@ def main(n_samples: int = 20):
         time.sleep(10)
         total += 1
         curr_time = int(time.time())
-        save_path = os.path.join(f"{data_dir}/", f"{actions[j]}_{j}_{curr_time}.csv")
+        save_path = os.path.join(f"{data_dir}/", f"{TASK_TYPE}_{actions[j]}_{j}_{curr_time}.csv")
         channels.to_csv(save_path)
 
         channel_datas.append(channels)
