@@ -6,8 +6,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-from pandas import DataFrame
+# import tensorflow as tf
 from pylsl import StreamInlet, resolve_stream
 
 # https://docs.google.com/document/d/e/2PACX-1vR_4DXPTh1nuiOwWKwIZN3NkGP3kRwpP4Hu6fQmy3jRAOaydOuEI1jket6V4V6PG4yIG15H1N7oFfdV/pub
@@ -17,6 +16,8 @@ from src.data.signal_processing import apply_mix, bandpass, logvar
 USER = "anna"  # This is the username
 BOX_MOVE = "random"  # random or model
 TASK_TYPE = "arm"
+CHANNELS = ["CZ", "C4", "T4", "T5", "P3", "PZ", "P4", "FZ", "FP1", "FP2", "F7", "F3", "F4", "F8", "T3", "C3"]
+SAMPLE_RATE = 125
 
 font = cv2.FONT_HERSHEY_COMPLEX
 
@@ -261,7 +262,8 @@ def main(n_samples: int = 20):
     # Load model if applied
     if BOX_MOVE == "model":
         MODEL_NAME = "models_07/NN/64.15-50epoch-1657286289-loss-0.64.model "
-        model = tf.keras.models.load_model(MODEL_NAME)
+        # model = tf.keras.models.load_model(MODEL_NAME)
+        model = []
 
         with open(
             "/home/nurife/BCI/IM/BCI/models_09/W_matrix/1657359658.pickle", "rb"
@@ -281,19 +283,21 @@ def main(n_samples: int = 20):
         y = (b - W[0] * x) / W[1]
         d = np.array([x[0], y[0]])
         c = np.array([x[1], y[1]])
+    else:
+        MODEL_NAME = ""
 
     # Get datastream: resolve an EEG stream on the lab network
     print("Looking for an EEG stream...")
     streams = resolve_stream("type", "EEG")
     # create a new inlet to read from the stream
-    inlet = StreamInlet(streams[0])
+    inlet = StreamInlet(streams[0], max_buflen=4096)
 
     # Get random sequence of actions
     actions = generate_random_actions(n_samples)
 
     # Show inital screen of game for 20 s
-    game_startscreen(game_settings)
-    #time.sleep(20)
+    #game_startscreen(game_settings)
+    time.sleep(1)
 
     # Start recording
     total = 0
@@ -304,16 +308,42 @@ def main(n_samples: int = 20):
     start = time.time()
     for j in range(len(actions)):
         # Update Game with new task
-        update(j, game_settings, actions)
+        #update(j, game_settings, actions)
         channel_data = {}
         time_stamps = [0]
         first_timestamp = 0
         print("Start recording Data")
 
         # Record for 5 seconds
+        timeStampsIn5Sec = [];
+
+        print("starting with pull chunk")
+        sample_count = 0;
+        samples_1, timeStamps_1 = inlet.pull_chunk();
+        while True:
+            time.sleep(0.1)
+            samples, timeStamps = inlet.pull_chunk();            
+            if len(samples) > 0:
+                sample_count += len(samples);
+                
+                timeStampsIn5Sec.extend(timeStamps)
+
+                elapsedTime = timeStampsIn5Sec[-1] - timeStampsIn5Sec[0];
+                
+
+                print(sample_count, "   ", len(samples), "    ", elapsedTime);
+
+                if elapsedTime > 5:
+                    break;
+
+        print("stopepd with pull chunk")
+
+        
         while time_stamps[-1] < 5:
             # Get sample fomr EEG stream
             sample, timestamp = inlet.pull_sample()
+            
+        
             timestamp = time.time()
             if timestamp > first_timestamp + time_stamps[-1]:
                 for i in range(16):
@@ -324,16 +354,19 @@ def main(n_samples: int = 20):
                 if first_timestamp == 0:
                     first_timestamp = timestamp
                 time_stamps.append(timestamp - first_timestamp)
-                print(timestamp - first_timestamp)
+                # print(timestamp - first_timestamp)
+
+
 
         print("End recording Data")
 
         # Transform data in df
-        channels = DataFrame()
-        channels["s"] = time_stamps[1:]
-        channels["mrk"] = actions[j]
+        channels = {}
+        channels["class"] = str(TASK_TYPE)+"_"+str(actions[j])
+        channels["time_in_s"] = time_stamps[1:]
         for i in range(len(channel_data)):
-            channels[i] = channel_data[i]
+            channels[CHANNELS[i]] = channel_data[i]
+        channels = pd.DataFrame(channels)
 
         # Move box in video and show relax command
         if BOX_MOVE == "random":
@@ -365,8 +398,8 @@ def main(n_samples: int = 20):
                 game_settings["square_2"]["y2"] -= 20
                 right += 1
 
-        move(game_settings)
-        time.sleep(10)
+        #move(game_settings)
+        time.sleep(1)
         total += 1
         curr_time = int(time.time())
         save_path = os.path.join(f"{data_dir}/", f"{TASK_TYPE}_{actions[j]}_{j}_{curr_time}.csv")
