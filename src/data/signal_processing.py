@@ -4,21 +4,7 @@ from matplotlib import mlab
 from scipy import linalg, integrate
 from scipy.signal import freqs
 
-
-def cov(trials, nsamples):
-    """ Calculate the covariance for each trial and return their average """
-    ntrials = trials.shape[2]
-    covariances = [trials[:, :, i].dot(trials[:, :, i].T) / nsamples for i in range(ntrials)]
-    return np.mean(covariances, axis=0)
-
-
-def whitening(sigma):
-    """ Calculate a whitening matrix for covariance matrix sigma. """
-    U, l, _ = linalg.svd(sigma)
-    return U.dot(np.diag(l ** -0.5))
-
-
-def psd(trials, nchannels, nsamples, sample_rate):
+def psd(dataset, selected_data:str='sample'):
     """
     Calculates for each trial the Power Spectral Density (PSD).
 
@@ -39,16 +25,32 @@ def psd(trials, nchannels, nsamples, sample_rate):
         :param nchannels:
     """
 
-    ntrials = trials.shape[2]
-    trials_PSD = np.zeros((nchannels, 148, ntrials))
+    ntrials = len(dataset)
+    nchannels = len(dataset.channel_names)
+    ndatapoints = dataset.data_length
+    trials_PSD = np.zeros((ntrials, 251, nchannels))
+
     # Iterate over trials and channels
     for trial in range(ntrials):
         for ch in range(nchannels):
             # Calculate the PSD
-            (PSD, frequency) = mlab.psd(trials[ch, :, trial], NFFT=int(nsamples), Fs=sample_rate)
-            trials_PSD[ch, :, trial] = PSD.ravel()
+            sample_values_ch = dataset.get_sample_values(trial, selected_data=selected_data)[:,ch]
+            (PSD, frequency) = mlab.psd(sample_values_ch, NFFT=int(ndatapoints), Fs=dataset.sample_rate)
+            trials_PSD[trial, :, ch] = PSD.ravel()
 
     return trials_PSD, frequency
+
+def cov(trials, nsamples):
+    """ Calculate the covariance for each trial and return their average """
+    ntrials = trials.shape[2]
+    covariances = [trials[:, :, i].dot(trials[:, :, i].T) / nsamples for i in range(ntrials)]
+    return np.mean(covariances, axis=0)
+
+
+def whitening(sigma):
+    """ Calculate a whitening matrix for covariance matrix sigma. """
+    U, l, _ = linalg.svd(sigma)
+    return U.dot(np.diag(l ** -0.5))
 
 
 def bandpass(trials, lo, hi, sample_rate, nchannels, nsamples):
@@ -94,12 +96,12 @@ def logvar(trials):
 
     Parameters
     ----------
-    trials : 3d-array (channels x samples x trials)
+    trials : 3d-array (trials x samples x channels)
         The EEG signal.
 
     Returns
     -------
-    jmnar - 2d-array (channels x trials)
+    jmnar - 2d-array (trials x channels)
         For each channel the logvar of the signal
     """
     return np.log(np.var(trials, axis=1))
@@ -133,6 +135,24 @@ def apply_mix(W, trials, nchannels, nsamples):
     for i in range(ntrials):
         trials_csp[:, :, i] = W.T.dot(trials[:, :, i])
     return trials_csp
+
+def best_csp_components(trials_csp, classes:list=['arm_left', 'arm_right']):
+    # Calculate log-var of arrays
+    logvar_class1 = logvar(trials_csp[classes[0]])
+    logvar_class2 = logvar(trials_csp[classes[1]])
+
+    # Get mean values for each component over all trials    
+    y0 = np.mean(logvar_class1, axis=0)
+    y1 = np.mean(logvar_class2, axis=0)
+    # Get difference of logvar values per component (class1-class2)
+    diff = []
+    for i, y in enumerate(y0):
+        diff.append(y - y1[i])
+
+    # Choose component where difference is max and min
+    best_max = int(np.where(diff == np.amax(diff))[0])
+    best_min = int(np.where(diff == np.amin(diff))[0])
+    return [best_max, best_min]
 
 
 def integration(y_data=None, chan_lab=None, cl=None, trials_PSD=None, ch=None):

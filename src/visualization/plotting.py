@@ -1,5 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib import mlab
+from src.data.signal_processing import logvar, psd
 
 
 def plot_psd(trials_PSD, freqs, chan_ind, chan_lab=None, maxy=None, title=None):
@@ -35,7 +37,7 @@ def plot_psd(trials_PSD, freqs, chan_ind, chan_lab=None, maxy=None, title=None):
         #plt.tight_layout()
         # Plot the PSD for each class
         for cl in trials_PSD.keys():
-            plt.plot(freqs, np.mean(trials_PSD[cl][ch, :, :], axis=1), label=cl)
+            plt.plot(freqs, np.mean(trials_PSD[cl][:, :, ch], axis=0), label=cl)
 
         # All plot decoration below...
 
@@ -58,8 +60,30 @@ def plot_psd(trials_PSD, freqs, chan_ind, chan_lab=None, maxy=None, title=None):
     plt.tight_layout()
     plt.show()
 
+def plot_data(dataset, title: str="", channels: list=["C3", "T3", "CZ", "T4", "C4"], selected_data:str='sample'):
+    # Calc psd
+    psd_set, freqs = psd(dataset, selected_data)
+    print(np.shape(psd_set))
 
-def plot_logvar(trials, nchannels, cl_lab):
+    # Get psd for each class
+    class_indexes = {'arm_left':[], 'arm_right':[]}
+    for cl in ['arm_left', 'arm_right']:
+        class_indexes[cl] = list(np.where(dataset.data["class"] == cl)[0])
+
+    trials_PSD = {'arm_left': psd_set[class_indexes['arm_left'],:,:], 'arm_right': psd_set[class_indexes['arm_right'],:,:]}
+
+    # Plot mean PSD of selected channels
+    plot_psd(
+        trials_PSD,
+        freqs,
+        [dataset.channel_names.index(ch) for ch in channels],
+        chan_lab=channels,
+        title=title
+    )
+    
+
+
+def plot_logvar(trials, classes, title):
     """
     Plots the log-var of each channel/component.
     arguments:
@@ -67,58 +91,110 @@ def plot_logvar(trials, nchannels, cl_lab):
     """
     plt.figure(figsize=(12, 5))
 
-    x0 = np.arange(nchannels)
-    x1 = np.arange(nchannels) + 0.4
+    y0 = np.mean(trials[classes[0]], axis=0)
+    y1 = np.mean(trials[classes[1]], axis=0)
+    x0 = np.arange(len(y0)) - 0.2
+    x1 = np.arange(len(y1)) + 0.2
 
-    cl1 = cl_lab[0]
-    cl2 = cl_lab[1]
-
-    y0 = np.mean(trials[cl1], axis=1)
-    y1 = np.mean(trials[cl2], axis=1)
-
-    plt.bar(x0, y0, width=0.5, color='b')
+    plt.bar(x0, y0, width=0.4, color='b')
     plt.bar(x1, y1, width=0.4, color='r')
 
-    plt.xlim(-0.5, nchannels + 0.5)
+    plt.xlim(-0.5, len(y0) + 0.5)
 
     plt.gca().yaxis.grid(True)
-    plt.title('log-var of each channel/component')
-    plt.xlabel('channels/components')
-    plt.ylabel('log-var')
-    plt.legend(cl_lab)
+    plt.title('Log-Var of each component '+title)
+    plt.xlabel('Components')
+    plt.ylabel("Log Variance")
+    plt.legend(classes)
     plt.show()
 
+def plot_logvar_diff(trials, classes, title):
+    """
+    Plots the log-var of each channel/component.
+    arguments:
+        trials - Dictionary containing the trials (log-vars x trials) for 2 classes.
+    """
+    y0 = np.mean(trials[classes[0]], axis=0)
+    y1 = np.mean(trials[classes[1]], axis=0)
+    diff = []
+    for i, y in enumerate(y0):
+        diff.append(y - y1[i])
+    
+    x0 = np.arange(len(diff))
+    
+    plt.figure(figsize=(12, 5))
+    lft = np.zeros(len(diff))
+    rght = np.zeros(len(diff))
+    
+    for i, value in enumerate(diff):
+        if value < 0:
+            rght[i] = value
+        else:
+            lft[i] = value
+    
+    
+    plt.bar(x0, rght, width=0.5, color="r")
+    plt.bar(x0, lft, width=0.5, color="b")
+    plt.xlim(-0.5, len(diff) + 0.5)
+    plt.title("Difference of Log-Var "+title)
+    plt.xlabel("Components")
+    plt.ylabel("Log Variance")
+    plt.legend(classes)
+    plt.gca().yaxis.grid(True)
+    plt.show()
 
-def plot_scatter(left, right, cl_lab, pc=None):
-    # plt.figure()
+def plot_data_logvar(dataset, selected_data, mode:str="diff", classes:list = ['arm_left', 'arm_right'], title:str=""):
+    # Get data as array
+    data_arr = dataset.get_data_array(selected_data=selected_data)
+    data_logvar = logvar(data_arr)
+
+    # Get data of each class
+    class_indexes = {classes[0]:[], classes[1]:[]}
+    for cl in classes:
+        class_indexes[cl] = list(np.where(dataset.data["class"] == cl)[0])
+
+    trials_logvar = {classes[0]: data_logvar[class_indexes[classes[0]],:], classes[1]: data_logvar[class_indexes[classes[1]],:]}
+
+    if mode == "single":
+        plot_logvar(trials_logvar, classes, title)
+    elif mode == "diff":
+        plot_logvar_diff(trials_logvar, classes, title)
+    else:
+        plot_logvar(trials_logvar, classes, title)
+        plot_logvar_diff(trials_logvar, classes, title)
+
+
+
+def plot_scatter(data_cl1, data_cl2, classes, pc=None):
     if pc is None:
         pc = [0, 1]
-    plt.scatter(left[0, :], left[-1, :], color='b')
-    plt.scatter(right[0, :], right[-1, :], color='r')
+    plt.scatter(data_cl1[:, 0], data_cl1[:, -1], color='b')
+    plt.scatter(data_cl2[:, 0], data_cl2[:, -1], color='r')
     plt.xlabel(f'Component:{pc[0]}')
     plt.ylabel(f'Component:{pc[1]}')
-    plt.legend(cl_lab)
+    plt.legend(classes)
 
 
-def plot_LDA(train, test, b, W, cl_lab, pc=None):
+def plot_LDA(train, test, b, W, classes, pc=None):
     # Scatterplot like before
     if pc is None:
         pc = [0, 1]
-    cl1 = cl_lab[0]
-    cl2 = cl_lab[1]
+    cl1 = classes[0]
+    cl2 = classes[1]
     # Calculate decision boundary (x,y)
     x = np.arange(-3,1.5, 0.1)
     y = (b - W[0] * x) / W[1]
 
+    plt.figure(figsize=(12,5))
     plt.subplot(1, 2, 1)
-    plot_scatter(train[cl1], train[cl2], cl_lab,pc)
+    plot_scatter(train[cl1], train[cl2], classes, pc)
     plt.title('Training data')
     plt.plot(x, y, linestyle='--', linewidth=2, color='k')
     #plt.xlim(-5, 1)
     plt.ylim(-2.5, 1)
 
     plt.subplot(1, 2, 2)
-    plot_scatter(test[cl1], test[cl2], cl_lab,pc)
+    plot_scatter(test[cl1], test[cl2], classes, pc)
     plt.title('Test data')
     plt.plot(x, y, linestyle='--', linewidth=2, color='k')
     #plt.xlim(-5, 1)
