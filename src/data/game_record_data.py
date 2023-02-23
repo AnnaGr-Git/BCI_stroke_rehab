@@ -2,6 +2,9 @@ import os
 import pickle
 import time
 from datetime import datetime
+import random
+import math
+
 
 import cv2
 import numpy as np
@@ -17,7 +20,8 @@ USER = "anna"  # This is the username
 BOX_MOVE = "random"  # random or model
 TASK_TYPE = "arm"
 CHANNELS = ["CZ", "C4", "T4", "T5", "P3", "PZ", "P4", "FZ", "FP1", "FP2", "F7", "F3", "F4", "F8", "T3", "C3"]
-SAMPLE_RATE = 125
+SAMPLE_RATE = 125 #125
+TIME_CORR = False
 
 font = cv2.FONT_HERSHEY_COMPLEX
 
@@ -115,7 +119,7 @@ def environment(game_settings):
     return env
 
 
-def update(pos, game_settings, actions):
+def update(pos, game_settings, action):
     """ Update game with the next task."""
     env = environment(game_settings)
 
@@ -127,9 +131,9 @@ def update(pos, game_settings, actions):
         "img_task"
     ]
 
-    if actions[pos] == "right":
+    if action == "right":
         color = (255 / 255, 95 / 255, 1 / 255)
-    elif actions[pos] == "left":
+    elif action == "left":
         color = (16 / 255, 128 / 255, 255 / 255)
     else:
         color = (255, 255, 255)
@@ -144,7 +148,7 @@ def update(pos, game_settings, actions):
     )  # text,coordinate,font,size of text,color,thickness of font
     cv2.putText(
         env,
-        str(actions[pos]),
+        str(action),
         (int(game_settings["WIDTH"] / 2 - 70), int(game_settings["HEIGHT"] // 4 + 70)),
         font,
         2,
@@ -203,7 +207,7 @@ def generate_random_actions(n: int = 20):
     actions = np.full(n, "right")
     actions = np.append(actions, np.full(n, "left"))
     np.random.shuffle(actions)
-    return actions
+    return list(actions)
 
 
 def input_process(trial, W_matrix):
@@ -290,14 +294,20 @@ def main(n_samples: int = 20):
     print("Looking for an EEG stream...")
     streams = resolve_stream("type", "EEG")
     # create a new inlet to read from the stream
-    inlet = StreamInlet(streams[0], max_buflen=4096)
+    proc_clocksync = 1  # Perform automatic clock synchronization; equivalent to manually adding the time_correction().
+    proc_dejitter = 2  # Remove jitter from time stamps using a smoothing algorithm to the received time stamps.
+    proc_monotonize = 4  # Force the time-stamps to be monotonically ascending. Only makes sense if timestamps are dejittered.
+    if TIME_CORR:
+        inlet = StreamInlet(streams[0], max_buflen=4096, processing_flags=proc_clocksync|proc_dejitter|proc_monotonize)
+    else:
+        inlet = StreamInlet(streams[0], max_buflen=4096)
 
     # Get random sequence of actions
     actions = generate_random_actions(n_samples)
 
     # Show inital screen of game for 20 s
-    #game_startscreen(game_settings)
-    time.sleep(1)
+    game_startscreen(game_settings)
+    time.sleep(10)
 
     # Start recording
     total = 0
@@ -306,71 +316,78 @@ def main(n_samples: int = 20):
     correct = 0
     channel_datas = []
     start = time.time()
-    for j in range(len(actions)):
+    task_num = 1
+    while len(actions) > 0:
+        # Get one random action
+        action = random.choice(actions)
+        # print(f"Perform action: {action}")
+
         # Update Game with new task
-        #update(j, game_settings, actions)
-        channel_data = {}
-        time_stamps = [0]
-        first_timestamp = 0
-        print("Start recording Data")
+        update(task_num, game_settings, action)
 
         # Record for 5 seconds
-        timeStampsIn5Sec = [];
+        print("Start recording Data")
 
-        print("starting with pull chunk")
-        sample_count = 0;
-        samples_1, timeStamps_1 = inlet.pull_chunk();
-        while True:
+        elapsedTime = 0
+        timeStampsIn5Sec = []
+        sample_count = 0
+        channel_data = {}
+
+        # Initial flush to empty chunck of previous waiting time
+        dropped_samples = inlet.flush()
+
+        while elapsedTime <= 5:
             time.sleep(0.1)
-            samples, timeStamps = inlet.pull_chunk();            
-            if len(samples) > 0:
-                sample_count += len(samples);
-                
-                timeStampsIn5Sec.extend(timeStamps)
+            # samples, timeStamps = inlet.pull_chunk(timeout=0.0, max_samples=buffersize)
+            samples, timeStamps = inlet.pull_chunk()
 
-                elapsedTime = timeStampsIn5Sec[-1] - timeStampsIn5Sec[0];
-                
-
-                print(sample_count, "   ", len(samples), "    ", elapsedTime);
-
-                if elapsedTime > 5:
-                    break;
-
-        print("stopepd with pull chunk")
-
-        
-        while time_stamps[-1] < 5:
-            # Get sample fomr EEG stream
-            sample, timestamp = inlet.pull_sample()
+            print(len(samples))
             
-        
-            timestamp = time.time()
-            if timestamp > first_timestamp + time_stamps[-1]:
-                for i in range(16):
-                    if i not in channel_data:
-                        channel_data[i] = [sample[i]]
-                    else:
-                        channel_data[i].append(sample[i])
-                if first_timestamp == 0:
-                    first_timestamp = timestamp
-                time_stamps.append(timestamp - first_timestamp)
-                # print(timestamp - first_timestamp)
+            if len(samples) > 0:
+                sample_count += len(samples)
+                # Timestamps of LSL samples
+                timeStampsIn5Sec.extend(timeStamps)
+                # Elapsed time after first sample
+                elapsedTime = timeStampsIn5Sec[-1] - timeStampsIn5Sec[0]
 
+                # Save data
+                for sample in samples:
+                    for i in range(16):
+                        if i not in channel_data:
+                            channel_data[i] = [sample[i]]
+                        else:
+                            channel_data[i].append(sample[i])
+                
 
+                
+                # print(sample_count, "   ", len(samples), "    ", elapsedTime)
+            # ts = [*map(lambda x: x - timeStampsIn5Sec[0], timeStamps)]
+            # print(f"Timestamps: {ts}\n")
 
         print("End recording Data")
 
+        # Check if data is correct size
+        target_sample_length = SAMPLE_RATE*5
+        print(sample_count)
+        if (sample_count < target_sample_length*0.9) or (sample_count > target_sample_length*1.1):
+            print(f"With a data length of {sample_count}, the sample is not valid!")
+            time.sleep(5)
+            continue
+        
         # Transform data in df
         channels = {}
-        channels["class"] = str(TASK_TYPE)+"_"+str(actions[j])
-        channels["time_in_s"] = time_stamps[1:]
+        channels["class"] = str(TASK_TYPE)+"_"+str(action)
+        # Get elapsed time for all timestamps
+        channels["time_in_s"] = [*map(lambda x: x - timeStampsIn5Sec[0], timeStampsIn5Sec)]
+        #print(channels["time_in_s"])
+        # Save data in channel columns
         for i in range(len(channel_data)):
             channels[CHANNELS[i]] = channel_data[i]
         channels = pd.DataFrame(channels)
 
         # Move box in video and show relax command
         if BOX_MOVE == "random":
-            box = actions[j]
+            box = action
             box_shift = int((0.8 * game_settings["HEIGHT"]) // n_samples)
             if box == "left":
                 game_settings["square_1"]["y1"] -= box_shift
@@ -388,24 +405,27 @@ def main(n_samples: int = 20):
             )
 
             if choice == 1:
-                print(f"Action:{actions[j]} Moving:left")
+                print(f"Action:{action} Moving:left")
                 game_settings["square_1"]["y1"] -= 20
                 game_settings["square_1"]["y2"] -= 20
                 left += 1
             elif choice == 0:
-                print(f"Action:{actions[j]} Moving:right")
+                print(f"Action:{action} Moving:right")
                 game_settings["square_2"]["y1"] -= 20
                 game_settings["square_2"]["y2"] -= 20
                 right += 1
 
-        #move(game_settings)
-        time.sleep(1)
+        move(game_settings)
+        time.sleep(10)
         total += 1
         curr_time = int(time.time())
-        save_path = os.path.join(f"{data_dir}/", f"{TASK_TYPE}_{actions[j]}_{j}_{curr_time}.csv")
+        save_path = os.path.join(f"{data_dir}/", f"{TASK_TYPE}_{action}_{task_num}_{curr_time}.csv")
         channels.to_csv(save_path)
 
         channel_datas.append(channels)
+
+        task_num += 1
+        actions.remove(action)
 
     # plt.plot(channel_datas[0][0])
     # plt.show()
