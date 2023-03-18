@@ -28,7 +28,8 @@ def psd(dataset, selected_data:str='sample'):
     ntrials = len(dataset)
     nchannels = len(dataset.channel_names)
     ndatapoints = dataset.data_length
-    trials_PSD = np.zeros((ntrials, 251, nchannels))
+    #trials_PSD = np.zeros((ntrials, 251, nchannels))
+    trials_PSD = []
 
     # Iterate over trials and channels
     for trial in range(ntrials):
@@ -36,21 +37,59 @@ def psd(dataset, selected_data:str='sample'):
             # Calculate the PSD
             sample_values_ch = dataset.get_sample_values(trial, selected_data=selected_data)[:,ch]
             (PSD, frequency) = mlab.psd(sample_values_ch, NFFT=int(ndatapoints), Fs=dataset.sample_rate)
-            trials_PSD[trial, :, ch] = PSD.ravel()
+            #trials_PSD[trial, :, ch] = PSD.ravel()
+            trials_PSD.append(PSD.ravel())
+    trials_PSD = np.array(trials_PSD).reshape((ntrials,nchannels,np.shape(trials_PSD)[1]))
+    trials_PSD = np.transpose(trials_PSD, (0,2,1))
+    # print(f"ntrials: {ntrials}")
+    # print(f"nchannels: {nchannels}")
+    # print(f"Shape trials psd: {np.shape(trials_PSD)}")
 
     return trials_PSD, frequency
 
 def cov(trials, nsamples):
     """ Calculate the covariance for each trial and return their average """
     ntrials = trials.shape[2]
-    covariances = [trials[:, :, i].dot(trials[:, :, i].T) / nsamples for i in range(ntrials)]
+
+    # print("COV with n_samples..")
+    # covariances = [trials[:, :, i].dot(trials[:, :, i].T) / nsamples for i in range(ntrials)]
+
+    print("COV with trace..")
+    covariances = [trials[:, :, i].dot(trials[:, :, i].T) / np.trace(trials[:, :, i].dot(trials[:, :, i].T)) for i in range(ntrials)]
+    
+
     return np.mean(covariances, axis=0)
 
+def eigenvalue_decomp(A, svd_flag):
+    if svd_flag:
+        ## SVD
+        U, s, _ = linalg.svd(A)
+        print("Used SVD")
+        print(f"shape U: {np.shape(U)}, shape s: {np.shape(s)}")
+    else:
+        ## Eigenvalue decomposition
+        s,U = scipy.linalg.eig(A)
+        # CSP requires the eigenvalues E and eigenvector U be sorted in descending order
+        ord = np.argsort(s)
+        ord = ord[::-1] # argsort gives ascending order, flip to get descending
+        s = s[ord]
+        U = U[:,ord]
+        print("Used Eigenvalue Decomposition")
+        print(f"shape U: {np.shape(U)}, shape s: {np.shape(s)}")
+    
+    return U, s
 
-def whitening(sigma):
+
+def whitening(U, s, svd_flag):
     """ Calculate a whitening matrix for covariance matrix sigma. """
-    U, l, _ = linalg.svd(sigma)
-    return U.dot(np.diag(l ** -0.5))
+    # Whitening Transformation Matrix
+    if svd_flag:
+        P = U.dot(np.diag(s ** -0.5))
+    else:
+        P = np.dot(np.sqrt(scipy.linalg.inv(np.diag(s))),np.transpose(U))
+
+    print(f"shape P: {np.shape(P)}")
+    return P
 
 
 def bandpass(trials, lo, hi, sample_rate, nchannels, nsamples):
@@ -107,7 +146,7 @@ def logvar(trials):
     return np.log(np.var(trials, axis=1))
 
 
-def csp(trials_r, trials_l, nsamples):
+def csp(trials_r, trials_l, nsamples, svd_flag:bool=True):
     """
     Calculate the CSP transformation matrix W.
     arguments:
@@ -116,24 +155,60 @@ def csp(trials_r, trials_l, nsamples):
     returns:
         Mixing matrix W
     """
+    print(f"shape csp: {np.shape(trials_r)}")
 
+    # Calc Spatial Variance Matrix per Class
     cov_r = cov(trials_r, nsamples)
     cov_l = cov(trials_l, nsamples)
+    cov_c = cov_r + cov_l
+    print(f"shape Cr: {np.shape(cov_r)}, shape Cl: {np.shape(cov_l)}, shape Cc: {np.shape(cov_c)}")
 
-    P = whitening(cov_r + cov_l)
+    # Calc Eigenvalues of Common Spatial Variance
+    U, s = eigenvalue_decomp(A=cov_c, svd_flag=svd_flag)
 
-    B, _, _ = linalg.svd(P.T.dot(cov_l).dot(P))
-    W = P.dot(B)
+    # Whitening Transformation Matrix
+    P = whitening(U, s, svd_flag)
+
+    # Transform spatial variance matrix: cov_l and cov_r have the same eigenvectors
+    # The eigenvector with the largest eigenvalue for s_l has the smallest eigenvalue for s_r
+    if svd_flag:
+        s_l = P.T.dot(cov_l).dot(P)
+        B, _= eigenvalue_decomp(s_l, svd_flag)
+    else:
+        s_l = P.dot(cov_l).dot(P.T)
+        s_r = P.dot(cov_r).dot(P.T)
+        s1,U1 = scipy.linalg.eig(s_l,s_r)
+        ord1 = np.argsort(s1)
+        ord1 = ord1[::-1]
+        s1 = s1[ord1]
+        U1 = U1[:,ord1]
+        B = U1
+    
+    # The projection matrix (the spatial filter) can be calculated
+    # Projecting the whitened EEG signal onto the first and last m columns of eigenvectors B.
+    if svd_flag:
+        W = P.dot(B)
+    else:
+        W = np.dot(B.T,P)
+    
+    #print(f"W: {W}")
+    
     # spatial filters (maximise one variance, minimise other)
     return W
 
 
-def apply_mix(W, trials, nchannels, nsamples):
+def apply_mix(W, trials, nchannels, nsamples, svd_flag:bool=True):
     """ Apply a mixing matrix to each trial (basically multiply W with the EEG signal matrix)"""
     ntrials = trials.shape[2]
     trials_csp = np.zeros((nchannels, nsamples, ntrials))
-    for i in range(ntrials):
-        trials_csp[:, :, i] = W.T.dot(trials[:, :, i])
+
+    if svd_flag:
+        for i in range(ntrials):
+            trials_csp[:, :, i] = W.T.dot(trials[:, :, i])
+    else:
+        for i in range(ntrials):
+            trials_csp[:, :, i] = W.dot(trials[:, :, i])
+
     return trials_csp
 
 def best_csp_components(trials_csp, classes:list=['arm_left', 'arm_right']):
@@ -206,28 +281,6 @@ def best_components(trials_log):
     diff = []
     for i, y in enumerate(y0):
         diff.append(y - y1[i])
-
-    # plt.figure(figsize=(12, 5))
-    # lft = np.zeros(len(diff))
-    # rght = np.zeros(len(diff))
-    #
-    # for i, value in enumerate(diff):
-    #     if value > 0:
-    #         rght[i] = value
-    #     else:
-    #         lft[i] = value
-    #
-    # x0 = np.arange(len(diff))
-
-    # plt.bar(x0, rght, width=0.5, color="r")
-    # plt.bar(x0, lft, width=0.5, color="b")
-    # plt.xlim(-0.5, len(diff) + 0.5)
-    # plt.title("Difference of LogVar after CSP")
-    # plt.xlabel("Components")
-    # plt.ylabel("LogVariance")
-    # plt.legend(["right", "left"])
-    # plt.gca().yaxis.grid(True)
-    # plt.show()
 
     pc_right = np.where(diff == np.amax(diff))[0]
     pc_left = np.where(diff == np.amin(diff))[0]

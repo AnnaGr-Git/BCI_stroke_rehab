@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import List, Tuple, Optional
 import pandas as pd
+import scipy
 import torch
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -34,22 +35,28 @@ class BCIDataset(Dataset):
         Prints the person's name and age.
     """
 
-    def __init__(self, data_root, subjects: List[str], measurements: List[str], sample_rate:int=125, measurement_length:int=4) -> None:
+    def __init__(self, data_root, subjects: List[str], measurements: List[str], classnames:List[str]=['arm_left', 'arm_right'], sample_rate:int=125, measurement_length:int=4, filetype:str="csv") -> None:
         self.data_root = data_root
         self.subjects = subjects
         self.measurements = measurements
-        self.classes = ['arm_left', 'arm_right']
+        self.classes = classnames
         self.sample_rate = sample_rate
         self.measurement_length = measurement_length
         self.data_length = self.sample_rate * self.measurement_length
-        self.data = self.create_dataframe()
-        self.channel_names = list(self.data['sample'].iloc[0].columns[-16:])
+        if filetype == "mat":
+            self.channel_names = ['ch1','ch2','ch3','ch4','ch5','ch6','ch7','ch8','ch9','ch10','ch11','ch12','ch13','ch14','ch15','ch16']
+            self.data = self.create_dataframe_mat()
+            
+        else:
+            self.data = self.create_dataframe_csv()
+            self.channel_names = list(self.data['sample'].iloc[0].columns[-16:])
+        
         self.selected_data = "sample"
         self.csp_Matrix = np.array([])
         self.selected_csp_components = []
         self.training_data = {}
 
-    def create_dataframe(self):
+    def create_dataframe_csv(self):
         """Create dataframe of samples and their measurement information"""
         dataframe = {}
         for subj in self.subjects:
@@ -93,9 +100,61 @@ class BCIDataset(Dataset):
 
         return pd.DataFrame(dataframe)
     
+    def create_dataframe_mat(self):
+        """Create dataframe of samples and their measurement information"""
+        dataframe = {}
+        for subj in self.subjects:
+            for measurement in self.measurements:
+                filepath = os.path.join(self.data_root, subj+"/", measurement+'.mat')
+                if not os.path.isfile(filepath):
+                    print(filepath)
+                    print("File is not in directory.")
+                    continue
+
+                # Get data of measurement file
+                mat_contents = scipy.io.loadmat(filepath)
+                data = mat_contents['subjectData'][0][0]
+                num_trials = np.shape(data['trialsLabels'])[0]
+                num_datapoints, num_channels = np.shape(data['trialsData'][0][0])
+
+                # Transform data in dataframe
+                trial_data = data['trialsData']
+                labels = data['trialsLabels'].flatten()
+
+                for trial_idx in range(num_trials):
+                    label = self.classes[labels[trial_idx]]
+                    sample = trial_data[trial_idx][0]
+                    sample_df = {}
+                    sample_df['time_in_s'] = np.arange(0,self.measurement_length,self.measurement_length/num_datapoints)
+                    # Get data of each channel
+                    for ch in range(num_channels):
+                        sample_df[self.channel_names[ch]] = sample[:,ch]
+                        
+                    sample_df = pd.DataFrame(sample_df)
+                    
+                    # Save information and data in dataframe
+                    if len(dataframe)==0:
+                        dataframe['subject'] = [subj]
+                        dataframe['measurement'] = [measurement]
+                        dataframe['class'] = [label]
+                        dataframe['sampleID'] = [trial_idx]
+                        dataframe['path'] = [filepath]
+                        dataframe['sample'] = [sample_df]
+                    else:
+                        dataframe['subject'].append(subj)
+                        dataframe['measurement'].append(measurement)
+                        dataframe['class'].append(label)
+                        dataframe['sampleID'].append(trial_idx)
+                        dataframe['path'].append(filepath)
+                        dataframe['sample'].append(sample_df)
+
+        return pd.DataFrame(dataframe)
+
+    
     def get_sample_values(self,idx, selected_data: str="sample")-> np.array:
         # sample shape: sample_points x channels
-        sample = self.data[selected_data].iloc[idx][self.channel_names]
+        channel_names = list(self.data['sample'].iloc[idx].columns[-16:])
+        sample = self.data[selected_data].iloc[idx][channel_names]
         return np.array(sample)
 
     def get_data_array(self, selected_data: str="sample")-> np.array:
@@ -135,9 +194,18 @@ class BCIDataset(Dataset):
         for sample_idx in range(len(data_filtered)):
             filtered_sample = {}
             # Copy time from raw data
-            filtered_sample['time_in_s'] = list(self.data['sample'].iloc[sample_idx]['time_in_s'])
-            for ch_idx in range(len(self.channel_names)):
-                ch = self.channel_names[ch_idx]
+            columnames = self.data['sample'].iloc[sample_idx].columns
+            if 'time_in_s' in columnames:
+                filtered_sample['time_in_s'] = list(self.data['sample'].iloc[sample_idx]['time_in_s'])
+            elif 's' in columnames:
+                filtered_sample['time_in_s'] = list(self.data['sample'].iloc[sample_idx]['s'])
+            else:
+                print("Time data not found.")
+                
+
+            channel_names = list(columnames[-16:])
+            for ch_idx in range(len(channel_names)):
+                ch = channel_names[ch_idx]
                 filtered_sample[ch] = list(data_filtered[sample_idx,:,ch_idx])
             filtered_list.append(pd.DataFrame(filtered_sample))
 
@@ -151,13 +219,13 @@ class BCIDataset(Dataset):
             train_indexes = np.array(range(len(self.data)))
 
         # Get samples of each class
-        class_indexes = {'arm_left':[], 'arm_right':[]}
-        for cl in ['arm_left', 'arm_right']:
+        class_indexes = {}
+        for cl in self.classes:
             class_indexes[cl] = list(np.where(self.data["class"] == cl)[0])
 
         # Choose indexes for training & selected class
-        indexes_left = list(np.intersect1d(train_indexes, class_indexes['arm_left']))
-        indexes_right = list(np.intersect1d(train_indexes, class_indexes['arm_right']))
+        indexes_left = list(np.intersect1d(train_indexes, class_indexes[self.classes[0]]))
+        indexes_right = list(np.intersect1d(train_indexes, class_indexes[self.classes[1]]))
         # print(f"Indexes left: {indexes_left}")
         # print(f"Indexes right: {indexes_right}")
 
@@ -185,9 +253,17 @@ class BCIDataset(Dataset):
             for sample_idx in range(len(trials_csp)):
                 csp_sample = {}
                 # Copy time from raw data
-                csp_sample['time_in_s'] = list(self.data['sample'].iloc[sample_idx]['time_in_s'])
-                for ch_idx in range(len(self.channel_names)):
-                    ch = self.channel_names[ch_idx]
+                columnames = self.data['sample'].iloc[sample_idx].columns
+                if 'time_in_s' in columnames:
+                    csp_sample['time_in_s'] = list(self.data['sample'].iloc[sample_idx]['time_in_s'])
+                elif 's' in columnames:
+                    csp_sample['time_in_s'] = list(self.data['sample'].iloc[sample_idx]['s'])
+                else:
+                    print("Time data not found.")
+
+                channel_names = list(columnames[-16:])
+                for ch_idx in range(len(channel_names)):
+                    ch = channel_names[ch_idx]
                     csp_sample[ch] = list(trials_csp[sample_idx,:,ch_idx])
                 csp_list.append(pd.DataFrame(csp_sample))
 
@@ -196,11 +272,11 @@ class BCIDataset(Dataset):
             print("CSP-Matrix is not calculated yet. Please call function calc_csp first.")
 
 
-    def feature_extraction_CSP(self, only_train:bool=False):
+    def feature_extraction_CSP(self, only_train:bool=False, selected_data:str='filtered', best2components:bool=False):
         # Calc CSP Matrix
-        csp_Matrix = self.calc_csp(only_train=only_train, selected_data='filtered')
+        csp_Matrix = self.calc_csp(only_train=only_train, selected_data=selected_data)
         # Apply CSP on all data
-        self.apply_csp(selected_data="filtered")
+        self.apply_csp(selected_data=selected_data)
 
         # Check if using only train samples for calculation
         if only_train:
@@ -209,13 +285,13 @@ class BCIDataset(Dataset):
             train_indexes = np.array(range(len(self.data)))
 
         # Get samples of each class
-        class_indexes = {self.classes[0]:[], self.classes[1]:[]}
+        class_indexes = {}
         for cl in self.classes:
             class_indexes[cl] = list(np.where(self.data["class"] == cl)[0])
 
         # Choose indexes for training & selected class
-        indexes_left = list(np.intersect1d(train_indexes, class_indexes['arm_left']))
-        indexes_right = list(np.intersect1d(train_indexes, class_indexes['arm_right']))
+        indexes_left = list(np.intersect1d(train_indexes, class_indexes[self.classes[0]]))
+        indexes_right = list(np.intersect1d(train_indexes, class_indexes[self.classes[1]]))
         # print(f"Indexes left: {indexes_left}")
         # print(f"Indexes right: {indexes_right}")
 
@@ -223,21 +299,27 @@ class BCIDataset(Dataset):
         data_arr = self.get_data_array(selected_data="csp")
         trials_csp = {self.classes[0]: data_arr[indexes_left,:], self.classes[1]: data_arr[indexes_right,:]}
 
-        components = best_csp_components(trials_csp, self.classes)
-        self.selected_csp_components = components
-        print(f"Best CSP components: {components}")
+        if best2components:
+            components = best_csp_components(trials_csp, self.classes)
+            self.selected_csp_components = components
+        else:
+            self.selected_csp_components = list(range(np.shape(data_arr)[2]))
 
-        return data_arr[:,:,components]
+        print(f"Selected CSP components: {self.selected_csp_components}")
 
-    def create_train_test_split(self, test_size):
+        return data_arr[:,:,self.selected_csp_components]
+
+    def create_random_train_test_split(self, test_size):
         # Split data in train and test samples
         sample_indexes = list(range(len(self.data)))
         class_labels = list(self.data['class'])
 
         indexes_train, indexes_test, y_train, y_test = train_test_split(sample_indexes, class_labels,
                                                             stratify=class_labels, 
-                                                            test_size=test_size)
+                                                            test_size=test_size,
+                                                            random_state=54)    # 42
         print(f"Split dataset in {len(indexes_train)} train and {len(indexes_test)} test samples.")
+        #print(f"Test indexes: {indexes_test}")
         
         train_test_list = []
         for i in range(len(self.data)):
@@ -251,13 +333,48 @@ class BCIDataset(Dataset):
         self.data['train_split'] = train_test_list
 
         return indexes_train, indexes_test, y_train, y_test
+    
+    def create_subjects_test_split(self, test_subjects:list):
+        sample_indexes = list(range(len(self.data)))
 
-    def create_training_data(self, test_size:float=0.2, mode: str = ["class_as_array","class_as_key"][0]):
+        indexes_test = []
+        for subj in test_subjects:
+            subj_indexes = np.where(self.data["subject"] == subj)[0]
+            indexes_test.append(subj_indexes)
+            
+        indexes_test = list(np.array(indexes_test).flatten())
+        indexes_train = list(set(sample_indexes) ^ set(indexes_test))
+        print(f"Split dataset in {len(indexes_train)} train and {len(indexes_test)} test samples.")
+
+        train_test_list = []
+        for i in range(len(self.data)):
+            if i in indexes_train:
+                train_test_list.append("train")
+            elif i in indexes_test:
+                train_test_list.append("test")
+            else:
+                print("Index is not used in training.")
+                
+        self.data['train_split'] = train_test_list
+
+        class_labels = np.array(self.data['class'])
+        y_train = class_labels[indexes_train]
+        y_test = class_labels[indexes_test]
+
+        return indexes_train, indexes_test, y_train, y_test
+        
+
+    def create_training_data(self, test_size:float=0.2, mode: str = ["class_as_array","class_as_key"][0], selected_data:str='filtered', best2components:bool=False, test_subjects:list=[]):
         # Split data in train and test samples
-        indexes_train, indexes_test, y_train, y_test = self.create_train_test_split(test_size)
+        if len(test_subjects)==0:
+            print("Split train/test-data randomly.")
+            indexes_train, indexes_test, y_train, y_test = self.create_random_train_test_split(test_size)
+        else:
+            print(f"Split data using {test_subjects} for testing.")
+            indexes_train, indexes_test, y_train, y_test = self.create_subjects_test_split(test_subjects)
 
         # Feature Extraction
-        data_2comp = self.feature_extraction_CSP(only_train=True)
+        data_2comp = self.feature_extraction_CSP(only_train=True,selected_data=selected_data, best2components=best2components)
         # Calc logvar of features
         features = logvar(data_2comp)
 
@@ -287,11 +404,6 @@ class BCIDataset(Dataset):
         self.training_data = {"train":training_data, "test":test_data}
         return self.training_data
         
-
-
-
-
-
 
     def get_shapes(self):
         shapes = {}

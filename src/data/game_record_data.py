@@ -251,10 +251,11 @@ def predict_lda(input_lda, c, d, W_matrix):
 ## ------------ MAIN ------------------------------
 def main(n_samples: int = 20):
     # Get game settings
-    WIDTH = 800
-    HEIGHT = 600
-    SQ_SIZE = 50
-    MOVE_SPEED = 1
+    # WIDTH = 800
+    # HEIGHT = 600
+    WIDTH = 1200
+    HEIGHT = 800
+    SQ_SIZE = 70
     game_settings = create_game_settings(WIDTH, HEIGHT, SQ_SIZE)
 
     # Where data will be stored
@@ -307,7 +308,7 @@ def main(n_samples: int = 20):
 
     # Show inital screen of game for 20 s
     game_startscreen(game_settings)
-    time.sleep(10)
+    time.sleep(7)
 
     # Start recording
     total = 0
@@ -341,7 +342,7 @@ def main(n_samples: int = 20):
             # samples, timeStamps = inlet.pull_chunk(timeout=0.0, max_samples=buffersize)
             samples, timeStamps = inlet.pull_chunk()
 
-            print(len(samples))
+            # print(len(samples))
             
             if len(samples) > 0:
                 sample_count += len(samples)
@@ -357,8 +358,6 @@ def main(n_samples: int = 20):
                             channel_data[i] = [sample[i]]
                         else:
                             channel_data[i].append(sample[i])
-                
-
                 
                 # print(sample_count, "   ", len(samples), "    ", elapsedTime)
             # ts = [*map(lambda x: x - timeStampsIn5Sec[0], timeStamps)]
@@ -416,7 +415,7 @@ def main(n_samples: int = 20):
                 right += 1
 
         move(game_settings)
-        time.sleep(10)
+        time.sleep(4)
         total += 1
         curr_time = int(time.time())
         save_path = os.path.join(f"{data_dir}/", f"{TASK_TYPE}_{action}_{task_num}_{curr_time}.csv")
@@ -424,6 +423,7 @@ def main(n_samples: int = 20):
 
         channel_datas.append(channels)
 
+        print(f"Number of Tasks: {task_num}")
         task_num += 1
         actions.remove(action)
 
