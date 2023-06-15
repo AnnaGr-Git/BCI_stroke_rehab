@@ -1,4 +1,4 @@
-DL Classification for BCI Stroke Rehabilitation
+DL Classification for BCI in Stroke Rehabilitation
 ==============================
 Brain Computer-Interfaces (BCI) proved to be an effective method for the rehabilitation of post-stroke impairments by translating brain signals into movement intentions and supporting the execution of the motion with external devices such as exoskeletons. This is one of many applications through which the classification of electroencephalography (EEG) recordings of motor imagery (MI) tasks gained a lot of attention in current research.
 
