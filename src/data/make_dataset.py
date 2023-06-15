@@ -64,7 +64,7 @@ class BCIDataset(Dataset):
     def create_dataframe_csv(self):
         """Create dataframe of samples and their measurement information"""
         dataframe = {}
-        print(f"Subjects: {self.subjects}")
+        print(f"Create dataframe, Subjects: {self.subjects}, measurements: {self.measurements}")
         
         if len(self.measurements)<=0:
             for subj in self.subjects:
@@ -80,9 +80,13 @@ class BCIDataset(Dataset):
 
         for subj in self.subjects:
             for measurement in self.measurements:
+                move_flag = 'false'
                 dirpath = os.path.join(self.data_root, subj+"/", measurement+"/")
+                print(f"folderpath = {dirpath}")
                 if os.path.isdir(dirpath):
                     directory = os.listdir(dirpath)
+                    if "move" in measurement:
+                        move_flag = 'true'
                 else:
                     continue
                 # Iterate through all measurement files
@@ -91,6 +95,7 @@ class BCIDataset(Dataset):
                     
                     # Get data
                     filepath = self.data_root + subj+"/"+measurement+"/"+file
+                    print(f"filepath = {filepath}")
                     # shape: num_samples x num_channels
                     sample = pd.read_csv(filepath)
 
@@ -109,6 +114,7 @@ class BCIDataset(Dataset):
                         dataframe['sampleID'] = [file[indexes[1]+1:indexes[2]]]
                         dataframe['path'] = [file]
                         dataframe['sample'] = [cropped_sample]
+                        dataframe['move'] = [move_flag]
                     else:
                         dataframe['subject'].append(subj)
                         dataframe['measurement'].append(measurement)
@@ -116,6 +122,7 @@ class BCIDataset(Dataset):
                         dataframe['sampleID'].append(file[indexes[1]+1:indexes[2]])
                         dataframe['path'].append(file)
                         dataframe['sample'].append(cropped_sample)
+                        dataframe['move'].append(move_flag)
 
         return pd.DataFrame(dataframe)
     
@@ -454,7 +461,7 @@ class BCIDataset(Dataset):
         self.training_data = {"train":training_data, "test":test_data}
         return self.training_data
     
-    def load_subject_data(self, sub, channels, leave_subj_out:bool=False):
+    def load_subject_data(self, sub, channels, leave_subj_out:bool=False, move_flag:str='false'):
         if leave_subj_out:
             # Get data of all subjects except the selected one
             sub_df = self.data.loc[self.data['subject'] != sub]
@@ -471,13 +478,16 @@ class BCIDataset(Dataset):
         for ch_pair in channels:
             #print(f"Channel Pair: {ch_pair}")
             for trial in range(len(sub_df)):
-                labels.append(sub_df.iloc[trial]["class"])
-                ch_pairs.append(ch_pair)
-                arr = np.expand_dims(np.swapaxes(np.array(sub_df.iloc[trial]["filtered"][ch_pair]),0,1), axis=0)
-                if len(data) > 0:
-                    data = np.concatenate((data, arr), axis=0)
+                if sub_df.iloc[trial]['move'] == move_flag:
+                    labels.append(sub_df.iloc[trial]["class"])
+                    ch_pairs.append(ch_pair)
+                    arr = np.expand_dims(np.swapaxes(np.array(sub_df.iloc[trial]["filtered"][ch_pair]),0,1), axis=0)
+                    if len(data) > 0:
+                        data = np.concatenate((data, arr), axis=0)
+                    else:
+                        data = arr
                 else:
-                    data = arr
+                    continue
             #print(f"Data shape: {np.shape(data)}")
 
         label_translation = {"arm_left":"L", "arm_right":"R"}

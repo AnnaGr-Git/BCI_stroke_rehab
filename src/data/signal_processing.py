@@ -298,3 +298,101 @@ def accuracies(trials_acc, W_value, b_value):
 
     total = float((left_correct / (len(lt)) + right_correct / (len(rt))) / 2)
     return total
+
+def surrogate_ts(x, y, sampling_class_counts):
+    # Get left data
+    idx_left = np.where(y=='L')[0]
+    x_left = x[idx_left]
+    # Get right data
+    idx_right = np.where(y=='R')[0]
+    x_right = x[idx_right]
+
+    unique, counts = np.unique(y, return_counts=True)
+    count_L = counts[0]
+    count_R = counts[1]
+
+    # Augment left class data
+    trial = 0
+    x_augm = []
+    y_augm = []
+    for i in range(sampling_class_counts['L']-count_L):
+        # Get data of trial
+        x_trial = x_left[trial]
+
+        if len(x_trial) == 16:
+            # Go through all channels:
+            x_ch_augm = []
+            for ch in range(len(x_trial)):
+                ts = x_trial[ch]
+                # Randomly augment time series
+                FFT = np.fft.rfft(ts) # FFT of time-series
+                Random_phases = np.exp(np.random.uniform(0,np.pi,len(ts)//2+1)*1.0j) # Generate random phases
+                FFT = FFT * Random_phases # Randomize the phases in the FFT
+                ts_augm = np.fft.irfft(FFT) # Tranforms the frequency-domain back into the time-domain = Surrogate time-series
+                x_ch_augm.append(ts_augm)
+        else:
+            # Already one channel
+            ts = x_trial
+            # Randomly augment time series
+            FFT = np.fft.rfft(ts) # FFT of time-series
+            Random_phases = np.exp(np.random.uniform(0,np.pi,len(ts)//2+1)*1.0j) # Generate random phases
+            FFT = FFT * Random_phases # Randomize the phases in the FFT
+            ts_augm = np.fft.irfft(FFT) # Tranforms the frequency-domain back into the time-domain = Surrogate time-series
+            x_ch_augm = ts_augm
+
+        x_augm.append(x_ch_augm)
+        y_augm.append("L")
+
+        # Increase trial
+        trial += 1
+        if trial >= len(x_left):
+            trial = 0
+            
+    # Augment right class data
+    trial = 0
+    for i in range(sampling_class_counts['R']-count_R):
+        # Get data of trial
+        x_trial = x_right[trial]
+
+        if len(x_trial) == 16:
+            # Go through all channels:
+            x_ch_augm = []
+            for ch in range(len(x_trial)):
+                ts = x_trial[ch]
+                # Randomly augment time series
+                FFT = np.fft.rfft(ts) # FFT of time-series
+                Random_phases = np.exp(np.random.uniform(0,np.pi,len(ts)//2+1)*1.0j) # Generate random phases
+                FFT = FFT * Random_phases # Randomize the phases in the FFT
+                ts_augm = np.fft.irfft(FFT) # Tranforms the frequency-domain back into the time-domain = Surrogate time-series
+                x_ch_augm.append(ts_augm)
+        else:
+            # Already one channel
+            ts = x_trial
+            # Randomly augment time series
+            FFT = np.fft.rfft(ts) # FFT of time-series
+            Random_phases = np.exp(np.random.uniform(0,np.pi,len(ts)//2+1)*1.0j) # Generate random phases
+            FFT = FFT * Random_phases # Randomize the phases in the FFT
+            ts_augm = np.fft.irfft(FFT) # Tranforms the frequency-domain back into the time-domain = Surrogate time-series
+            x_ch_augm = ts_augm
+        
+        x_augm.append(x_ch_augm)
+        y_augm.append("R")
+
+        # Increase trial
+        trial += 1
+        if trial >= len(x_right):
+            trial = 0
+            
+    x_augm = np.array(x_augm)
+    y_augm = np.array(y_augm)
+
+    # Append to original data
+    x_res = np.append(x, x_augm, axis=0)
+    y_res = np.append(y, y_augm, axis=0)
+
+    # Shuffle samples
+    shuffle_indeces = np.random.permutation(len(x_res))
+    x_res = x_res[shuffle_indeces]
+    y_res = y_res[shuffle_indeces]
+
+    return x_res, y_res
