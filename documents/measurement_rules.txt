@@ -1,0 +1,23 @@
+What to take care of for measurements:
+- Check & note connected ports with EEG-channels
+- When tightening the cap -> pull the fabric, not the plastic (could break)
+- Ground & Ref must have a good connection! Ground=Base-board white wire; Ref=upper board white wire
+- Arms rest on lab instead of table (table might have inference)
+- Room with less interference for measurement, equal settings
+- EEG connection around the motor cortex area should be good (important area)
+- Filtering in OpenBCI can be used or not (own choice) -> I didn't use it
+
+Instructions EEG-cap & dongle:
+- Plug in battery for power
+- Turn switch to PC
+- Plug in dongle in PC
+- Device Manager set time of port to 1ms instead of 16
+- OpenBCI - Set Cyton, 16Ch -> click on Autoconnect -> Session starts
+- Change one of the right windows to Networking
+	- Choose LSL 
+	- Choose TimeSeries, press 'on'
+
+Note: Transferring of packages to Python was not reliable in battery mode with my computer
+      --> Only worked when connected to energy supply
+
+
