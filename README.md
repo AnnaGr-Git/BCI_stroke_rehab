@@ -1,7 +1,13 @@
 bci_stroke_rehabilitation
 ==============================
+Brain Computer-Interfaces (BCI) proved to be an effective method for the rehabilitation of post-stroke impairments by translating brain signals into movement intentions and supporting the execution of the motion with external devices such as exoskeletons. This is one of many applications through which the classification of electroencephalography (EEG) recordings of motor imagery (MI) tasks gained a lot of attention in current research.
 
-A short description of the project.
+This work presents an approach to how DL models can be trained to classify EEG-MI recordings with only a few data available. By making
+use of the public dataset PhysioNet, a base model is trained with data from many subjects, learning to extract features from EEG data. This pre-learned knowledge is exploited when fine-tuning the model on one specific subject with little data from our recorded dataset. After fine-tuning the PhysioNet base model on 11 individual subjects and selecting the most robust channel pairs, a median accuracy of 98% is reached. Overall, the approach of fine-tuning with a different dataset offers new insights for the development of individualized
+real-world BCI applications where limited data is available.
+
+Project Overview
+![Alt text](reports/images/system_overview.png?raw=true "Flowchart")
 
 Project Organization
 ------------
