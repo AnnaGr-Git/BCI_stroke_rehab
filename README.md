@@ -7,7 +7,7 @@ use of the public dataset PhysioNet, a base model is trained with data from many
 real-world BCI applications where limited data is available.
 
 ## Project Overview
-![Alt text](reports/images/system_overview.png?raw=true "Flowchart")
+![Alt text](reports/images/system_overview_low_quality.png?raw=true "Flowchart")
 
 ## Project Organization
 
@@ -44,8 +44,8 @@ real-world BCI applications where limited data is available.
     │   │   └── signal_processing.py <- Signal processing functions
     │   │   └── general_processor.py <- Data processing functions for PhysioNet database
     │   │
-    │   ├── models         <- Scripts to train models and then use trained models to make
-    │   │   │                 predictions
+    │   ├── models         <- Scripts to train models and then use trained models to make predictions
+    │   │   │                 
     │   │   ├── model_architectures
     │   │       └── model_1DCNN.py           <- Model architecture
     │   │   ├── ML_models.py                 <- Collection of ML methods
