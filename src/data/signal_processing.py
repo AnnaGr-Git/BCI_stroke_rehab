@@ -54,7 +54,7 @@ def cov(trials, nsamples):
     # print("COV with n_samples..")
     # covariances = [trials[:, :, i].dot(trials[:, :, i].T) / nsamples for i in range(ntrials)]
 
-    print("COV with trace..")
+    #print("COV with trace..")
     covariances = [trials[:, :, i].dot(trials[:, :, i].T) / np.trace(trials[:, :, i].dot(trials[:, :, i].T)) for i in range(ntrials)]
     
 
@@ -64,8 +64,8 @@ def eigenvalue_decomp(A, svd_flag):
     if svd_flag:
         ## SVD
         U, s, _ = linalg.svd(A)
-        print("Used SVD")
-        print(f"shape U: {np.shape(U)}, shape s: {np.shape(s)}")
+        # print("Used SVD")
+        # print(f"shape U: {np.shape(U)}, shape s: {np.shape(s)}")
     else:
         ## Eigenvalue decomposition
         s,U = scipy.linalg.eig(A)
@@ -74,8 +74,8 @@ def eigenvalue_decomp(A, svd_flag):
         ord = ord[::-1] # argsort gives ascending order, flip to get descending
         s = s[ord]
         U = U[:,ord]
-        print("Used Eigenvalue Decomposition")
-        print(f"shape U: {np.shape(U)}, shape s: {np.shape(s)}")
+        # print("Used Eigenvalue Decomposition")
+        # print(f"shape U: {np.shape(U)}, shape s: {np.shape(s)}")
     
     return U, s
 
@@ -88,7 +88,7 @@ def whitening(U, s, svd_flag):
     else:
         P = np.dot(np.sqrt(scipy.linalg.inv(np.diag(s))),np.transpose(U))
 
-    print(f"shape P: {np.shape(P)}")
+    # print(f"shape P: {np.shape(P)}")
     return P
 
 
@@ -155,13 +155,13 @@ def csp(trials_r, trials_l, nsamples, svd_flag:bool=True):
     returns:
         Mixing matrix W
     """
-    print(f"shape csp: {np.shape(trials_r)}")
+    # print(f"shape csp: {np.shape(trials_r)}")
 
     # Calc Spatial Variance Matrix per Class
     cov_r = cov(trials_r, nsamples)
     cov_l = cov(trials_l, nsamples)
     cov_c = cov_r + cov_l
-    print(f"shape Cr: {np.shape(cov_r)}, shape Cl: {np.shape(cov_l)}, shape Cc: {np.shape(cov_c)}")
+    # print(f"shape Cr: {np.shape(cov_r)}, shape Cl: {np.shape(cov_l)}, shape Cc: {np.shape(cov_c)}")
 
     # Calc Eigenvalues of Common Spatial Variance
     U, s = eigenvalue_decomp(A=cov_c, svd_flag=svd_flag)
@@ -211,23 +211,37 @@ def apply_mix(W, trials, nchannels, nsamples, svd_flag:bool=True):
 
     return trials_csp
 
-def best_csp_components(trials_csp, classes:list=['arm_left', 'arm_right']):
+def best_csp_components(trials_csp, classes:list=['arm_left', 'arm_right'], num_comp:int=2):
     # Calculate log-var of arrays
     logvar_class1 = logvar(trials_csp[classes[0]])
     logvar_class2 = logvar(trials_csp[classes[1]])
+    #print(f"Shape after logvar: {np.shape(logvar_class1)}")
 
     # Get mean values for each component over all trials    
     y0 = np.mean(logvar_class1, axis=0)
     y1 = np.mean(logvar_class2, axis=0)
+    #print(f"Mean value: {np.shape(y0)}")
+
     # Get difference of logvar values per component (class1-class2)
     diff = []
     for i, y in enumerate(y0):
         diff.append(y - y1[i])
 
+    # Sort diff array
+    indexes = np.argsort(diff)
+    #print(f"Indexes: {indexes}")
+
+    best_comps = []
+    for i in range(num_comp//2):
+        best_comps.append(indexes[i])
+        best_comps.append(indexes[-(i+1)])
+    
+
     # Choose component where difference is max and min
-    best_max = int(np.where(diff == np.amax(diff))[0])
-    best_min = int(np.where(diff == np.amin(diff))[0])
-    return [best_max, best_min]
+    # best_max = int(np.where(diff == np.amax(diff))[0])
+    # best_min = int(np.where(diff == np.amin(diff))[0])
+    # return [best_max, best_min]
+    return best_comps
 
 
 def integration(y_data=None, chan_lab=None, cl=None, trials_PSD=None, ch=None):
@@ -237,42 +251,6 @@ def integration(y_data=None, chan_lab=None, cl=None, trials_PSD=None, ch=None):
     integration = integrate.trapz(y_data, freqs)
     print('Channel %s, Class %s >> %f' % (chan_lab, cl, integration))
     return integration
-
-
-def train_lda(class1, class2):
-    '''
-    Trains the LDA algorithm.
-    arguments:
-        class1 - An array (observations x features) for class 1
-        class2 - An array (observations x features) for class 2
-    returns:
-        The projection matrix W
-        The offset b
-    '''
-    nclasses = 2
-
-    nclass1 = class1.shape[0]
-    nclass2 = class2.shape[0]
-
-    # Class priors: in this case, we have an equal number of training
-    # examples for each class, so both priors are 0.5
-    prior1 = nclass1 / float(nclass1 + nclass2)
-    prior2 = nclass2 / float(nclass1 + nclass1)
-
-    mean1 = np.mean(class1, axis=0)
-    mean2 = np.mean(class2, axis=0)
-
-    class1_centered = class1 - mean1
-    class2_centered = class2 - mean2
-
-    # Calculate the covariance between the features
-    cov1 = class1_centered.T.dot(class1_centered) / (nclass1 - nclasses)
-    cov2 = class2_centered.T.dot(class2_centered) / (nclass2 - nclasses)
-
-    W = (mean2 - mean1).dot(np.linalg.pinv(prior1 * cov1 + prior2 * cov2))
-    b = (prior1 * mean1 + prior2 * mean2).dot(W)
-
-    return W, b
 
 
 def best_components(trials_log):
