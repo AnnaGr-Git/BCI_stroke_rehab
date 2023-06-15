@@ -16,7 +16,7 @@ from pylsl import StreamInlet, resolve_stream
 from src.data.signal_processing import apply_mix, bandpass, logvar
 
 
-USER = "anna"  # This is the username
+USER = "jan"  # This is the username
 BOX_MOVE = "random"  # random or model
 TASK_TYPE = "arm"
 CHANNELS = ["CZ", "C4", "T4", "T5", "P3", "PZ", "P4", "FZ", "FP1", "FP2", "F7", "F3", "F4", "F8", "T3", "C3"]
