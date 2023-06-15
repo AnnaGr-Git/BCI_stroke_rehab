@@ -236,21 +236,21 @@ def plot_LDA(train, test, b, W, classes, components=None):
 #     plt.show()
 
 
-# def plot_history(history):
-#     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-#     ax1.plot(history.history['accuracy'], label='accuracy')
-#     ax1.plot(history.history['val_accuracy'], label='val_accuracy')
-#     ax1.set_xlabel('Epoch')
-#     ax1.set_ylabel('Accuracy')
-#     #ax1.set_ylim([0, 2])
-#     ax1.legend(loc='lower right')
+def plot_history(history):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+    ax1.plot(history.history['accuracy'], label='accuracy')
+    ax1.plot(history.history['val_accuracy'], label='val_accuracy')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Accuracy')
+    #ax1.set_ylim([0, 2])
+    ax1.legend(loc='lower right')
 
-#     ax2.plot(history.history['loss'], label='loss')
-#     ax2.plot(history.history['val_loss'], label='val_loss')
-#     ax2.set_xlabel('Epoch')
-#     ax2.set_ylabel('Loss')
-#     #ax2.set_ylim([0., 2])
-#     ax2.legend(loc='upper right')
+    ax2.plot(history.history['loss'], label='loss')
+    ax2.plot(history.history['val_loss'], label='val_loss')
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Loss')
+    #ax2.set_ylim([0., 2])
+    ax2.legend(loc='upper right')
 
-#     plt.show()
-#     return fig
+    plt.show()
+    return fig

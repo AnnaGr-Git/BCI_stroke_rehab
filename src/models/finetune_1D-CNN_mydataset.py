@@ -30,7 +30,7 @@ from collections import Counter
 
 from src.data.make_dataset import BCIDataset
 
-GPU = True
+GPU = False
 
 BASE_MODEL = "physionet"
 # BASE_MODEL = "mydataset"
@@ -58,7 +58,7 @@ if BASE_MODEL == "physionet":
     source_model_path = os.path.join(root_path, model_directory+model_folder, "bestModel.h5")
 
     # FINETUNED MODEL
-    model_save_path = os.path.join(root_path, "models/1D_CNN/"+CHANNEL_PAIRS+"/fine_tuned/physionet_base/")
+    model_save_path = os.path.join(root_path, "models/1D_CNN/"+CHANNEL_PAIRS+"/fine_tuned/physionet_base_new/")
     try:
         os.mkdir(model_save_path)
     except OSError as error:
@@ -132,7 +132,7 @@ for sub in test_subjects:
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
     for i, (train_index, test_index) in enumerate(skf.split(reshaped_x, y)):
-        print(f"Fold {i}:")
+        print(f"Fold {i} of {sub}:")
         print(f"  Train: index={train_index}")
         print(f"  Test:  index={test_index}")
 
@@ -265,6 +265,19 @@ for sub in test_subjects:
         
         with open(os.path.join(foldCVPath, "hist_finetuned_sub_"+str(sub)+"_"+date+".pkl"), "wb") as file:
             pickle.dump(hist.history, file)
+
+
+        """
+        Test model
+        """
+        del model # Delete the original model, just to be sure!
+        ## LOAD MODEL
+        input_shape = (None, np.shape(x_train)[1], np.shape(x_train)[2])
+            
+        model = HopefullNet(inp_shape = (input_shape[1], input_shape[2]), two_class=True) # 500,2
+        model.build(input_shape)
+        model.load_weights(modelPath)
+        model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
 
 
         testLoss, testAcc = model.evaluate(x_test, y_test)
