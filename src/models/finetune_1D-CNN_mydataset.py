@@ -16,13 +16,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import sys
 from src.models.model_architectures.model_1DCNN import HopefullNet
+from src.data.signal_processing import surrogate_ts
 import numpy as np
 from datetime import datetime
 import pathlib
 import tensorflow as tf
+from imblearn.over_sampling import SMOTE
 from src.data.general_processor import Utils
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 import pickle
 from sklearn.preprocessing import minmax_scale
@@ -30,13 +33,18 @@ from collections import Counter
 
 from src.data.make_dataset import BCIDataset
 
-GPU = False
+GPU = True
 
 BASE_MODEL = "physionet"
 # BASE_MODEL = "mydataset"
 
 # CHANNEL_PAIRS = "ours_3_pairs"
-CHANNEL_PAIRS = "ours_6_pairs"
+# CHANNEL_PAIRS = "ours_6_pairs"
+CHANNEL_PAIRS = "best_4_pairs"
+
+AUGMENTATION = "SMOTE"
+# AUGMENTATION = "SURROGATING"
+# AUGMENTATION = "NONE"
 
 
 root_path = pathlib.Path().resolve()
@@ -44,7 +52,10 @@ date = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 # DATA
 data_root = os.path.join(root_path,"data/raw/")
-model_directory = "models/1D_CNN/"+CHANNEL_PAIRS+"/leave_subjects_out/"
+if CHANNEL_PAIRS == "best_4_pairs":
+    model_directory = "models/1D_CNN/ours_6_pairs/leave_subjects_out/"
+else:
+    model_directory = "models/1D_CNN/"+CHANNEL_PAIRS+"/leave_subjects_out/" 
 
 if BASE_MODEL == "physionet":
     # SOURCE MODEL
@@ -58,7 +69,7 @@ if BASE_MODEL == "physionet":
     source_model_path = os.path.join(root_path, model_directory+model_folder, "bestModel.h5")
 
     # FINETUNED MODEL
-    model_save_path = os.path.join(root_path, "models/1D_CNN/"+CHANNEL_PAIRS+"/fine_tuned/physionet_base_new/")
+    model_save_path = os.path.join(root_path, "models/1D_CNN/"+CHANNEL_PAIRS+"/fine_tuned/physionet_base/smote_no_move/")
     try:
         os.mkdir(model_save_path)
     except OSError as error:
@@ -91,6 +102,8 @@ if CHANNEL_PAIRS == "ours_3_pairs":
     channels = [["C3","C4"],["F3","F4"],["P3","P4"]]
 elif CHANNEL_PAIRS == "ours_6_pairs":
     channels = [["C3","C4"],["F3","F4"],["P3","P4"],["FP1","FP2"],["F7","F8"],["T3","T4"]]
+elif CHANNEL_PAIRS == "best_4_pairs":
+    channels = [["C3","C4"],["FP1","FP2"],["F7","F8"],["T3","T4"]]
 else:
     print("Please select a valid channel pair setting!")
     channels = []
@@ -107,8 +120,10 @@ trainingset.validate_data()
 trainingset.apply_bandpass_filtering(selected_data="sample")
 
 log_accuracies = {}
+log_accuracies_ch = {}
 for sub in test_subjects:
     log_accuracies[sub] = {'NotTuned': [], 'FineTuned': []}
+    log_accuracies_ch[sub] = {}
 
     if BASE_MODEL == "mydataset":
         # SOURCE MODEL
@@ -116,7 +131,7 @@ for sub in test_subjects:
         source_model_path = os.path.join(root_path, model_directory+model_folder, "bestModel.h5")
 
     #Load data
-    x, y, _ = trainingset.load_subject_data(sub, channels)
+    x, y, ch_pairs = trainingset.load_subject_data(sub, channels, move_flag='false')
 
     #Reshape for scaling
     reshaped_x = x.reshape(x.shape[0], x.shape[1] * x.shape[2])
@@ -132,7 +147,7 @@ for sub in test_subjects:
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
     for i, (train_index, test_index) in enumerate(skf.split(reshaped_x, y)):
-        print(f"Fold {i} of {sub}:")
+        print(f"Fold {i}: of sub {sub}")
         print(f"  Train: index={train_index}")
         print(f"  Test:  index={test_index}")
 
@@ -140,7 +155,15 @@ for sub in test_subjects:
         x_test_raw = reshaped_x[test_index]
         y_train_raw = y[train_index]
         y_test = y[test_index]
+        ch_pairs_test = ch_pairs[test_index]
 
+
+        ## Add move-data to training set
+        x_move, y_move, _ = trainingset.load_subject_data(sub, channels, move_flag='true')
+        #Reshape for scaling
+        reshaped_x_move = x_move.reshape(x_move.shape[0], x_move.shape[1] * x_move.shape[2])
+        x_train_raw = np.append(x_train_raw, reshaped_x_move, axis=0)
+        y_train_raw = np.append(y_train_raw, y_move, axis=0)
 
         #Scale indipendently train/test
         #Axis used to scale along. If 0, independently scale each feature, otherwise (if 1) scale each sample.
@@ -153,7 +176,6 @@ for sub in test_subjects:
         x_test = np.swapaxes(x_test,1,2)
 
         #apply smote to train data
-        from imblearn.over_sampling import SMOTE
         # Resample to specific number
         #sampling_class_counts = {'L': 400, 'R': 400}
 
@@ -161,13 +183,25 @@ for sub in test_subjects:
             sampling_class_counts = {'L': 500, 'R': 500}
         elif CHANNEL_PAIRS == "ours_6_pairs":
             sampling_class_counts = {'L': 917, 'R': 917}
+        elif CHANNEL_PAIRS == "best_4_pairs":
+            sampling_class_counts = {'L': 768, 'R': 768}
         else:
             num = int(len(y_train_raw)*4)
             sampling_class_counts = {'L': num, 'R': num}
 
+        if AUGMENTATION == "SMOTE":
+            print("Data Augmentation Method: SMOTE")
+            sm = SMOTE(sampling_strategy=sampling_class_counts, random_state=42)
+            x_train_smote_raw, y_train = sm.fit_resample(x_train_scaled_raw, y_train_raw)
+        elif AUGMENTATION == "SURROGATING":
+            print("Data Augmentation Method: Surrogating")
+            x_train_smote_raw, y_train = surrogate_ts(x_train_scaled_raw, y_train_raw, sampling_class_counts)
+        else:
+            # No data augmentation
+            print("Data Augmentation Method: None")
+            x_train_smote_raw = x_train_scaled_raw
+            y_train = y_train_raw
 
-        sm = SMOTE(sampling_strategy=sampling_class_counts, random_state=42)
-        x_train_smote_raw, y_train = sm.fit_resample(x_train_scaled_raw, y_train_raw)
         print('Classes Count:')
         values, counts = np.unique(y_train_raw, return_counts=True)
         print (f"Before oversampling: values={values}, counts={counts}")
@@ -279,7 +313,6 @@ for sub in test_subjects:
         model.load_weights(modelPath)
         model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
 
-
         testLoss, testAcc = model.evaluate(x_test, y_test)
 
         print('Before Accuracy:', before_testAcc)
@@ -291,7 +324,6 @@ for sub in test_subjects:
         log_accuracies[sub]['NotTuned'].append(before_testAcc)      
         log_accuracies[sub]['FineTuned'].append(testAcc)
 
-        from sklearn.metrics import classification_report, confusion_matrix
         # get list of MLP's prediction on test set
         yPred = model.predict(x_test)
 
@@ -326,9 +358,53 @@ for sub in test_subjects:
         pickle.dump(conf_matrix,f)
         f.close()
 
+        # Detailed Channel Pair Evaluation
+        for ch_pair in channels:
+            ch_pair_name = ' '.join(ch_pair)
+            print(f"Test model with subject {sub}: and channel pair: {ch_pair}\n")
+            
+            try:
+                len(log_accuracies_ch[sub][ch_pair_name])
+            except:
+                log_accuracies_ch[sub][ch_pair_name] = []
+            
+
+            # Get samples of channel pair
+            idx = np.where(ch_pairs_test == ch_pair)[0]
+            x_test_ch = x_test[idx]
+            y_test_ch = y_test[idx]
+
+            yPred = model.predict(x_test_ch)
+
+            # convert label in string
+            yTestClass = y_test_ch
+            yPredClass = []
+            for label in yPred:
+                if label<0.5:
+                    yPredClass.append(0)
+                elif label>=0.5:
+                    yPredClass.append(1)
+                else:
+                    print("Label not found.")
+
+            yPredClass = np.array(yPredClass)
+                
+            # Calc accuracy
+            testAcc_ch = accuracy_score(yTestClass, yPredClass)
+            print(f"Acc={testAcc_ch}")
+            log_accuracies_ch[sub][ch_pair_name].append(testAcc_ch)
+
+
 # Save log_accuracies as file
 f = open(os.path.join(model_save_path,"test_accuracies_"+date+".pkl"),"wb")
 # write the python object (dict) to pickle file
 pickle.dump(log_accuracies,f)
+# close file
+f.close()
+
+# Save channel pair log_accuracies as file
+f = open(os.path.join(model_save_path,"ch_pair_accuracies_"+date+".pkl"),"wb")
+# write the python object (dict) to pickle file
+pickle.dump(log_accuracies_ch,f)
 # close file
 f.close()
