@@ -27,12 +27,27 @@
 #BSUB -e /zhome/f7/e/165914/BCI/BCI_stroke_rehab/gpu_%J.err
 # -- end of LSF options --
 
-module unload cuda
 nvidia-smi
 
-# Load the cuda module
-module load cuda/11.2
-
+# Activate Virtual Environment
 source BCI_env/bin/activate
 
-python3 src/models/finetune_1D-CNN_physionet.py
+# Load the cuda modules
+module load cuda/11.6
+module load cudnn/v8.3.2.44-prod-cuda-11.X
+module load tensorrt/7.2.3.4-cuda-11.X
+
+# Train Basemodel with own data
+# python3 src/models/train_1D-CNN_2_classes_mydataset.py
+
+# Train Basemodel with physioNet
+# python3 src/models/train_1D-CNN_2_classes.py
+
+# Finetune model with own data
+# python3 src/models/finetune_1D-CNN_mydataset.py
+
+# Finetune model with data of physioNet
+# python3 src/models/finetune_1D-CNN_physionet.py
+
+# Train model subject specific without pretrained basemodel
+python3 src/models/subject_specific_1D-CNN_mydataset.py
