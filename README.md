@@ -66,11 +66,58 @@ real-world BCI applications where limited data is available.
 
 
 ## Getting Started
+### Python environment
+To run the code, a conda environment is required.
+Check the [Conda website](https://www.anaconda.com/) for how to install it.
+
+### Installation
+1. Clone the repo
+   ```sh
+   git clone git@github.com:AnnaGr-Git/BCI_stroke_rehab.git
+   ```
+2. Create and activate a new conda environment from .yaml file
+   ```sh
+   conda env create -f environment.yml
+   conda activate BCI
+   ```
+3. Install further pre-requisites
+   ```sh
+   pip install -r requirements.txt
+   ```
+   or
+   ```sh
+   pip install -r requirements_all.txt
+   ```
+## Record EEG Data
+### Hardware
+* Open BCI EEG Headset with Dongle
+* Computer with Open BCI UI (download: https://openbci.com/downloads)
+
+### Measurement Setup
+Follow the instructions in file documents/measurement_rules.txt
+
+### Run Measurement
+1. Open the Open-BCI UI and start the measurements
+2. Use the python script "src/data/game_record_data.py"
+   * Define user name with "USER = name"
+   * Define the used channels in correct defined order with "CHANNELS = your channel names"
+   * Define the sample rate with "SAMPLE_RATE = your sample rate" (OpenBCI samples with 125 Hz with 16 channels)
 
 ## Train Model
+### Train on your own Computer (CPU)
+* Adapt the selected training script from src/models: GPU = False
+* Run the chosen training script in your favorite code editor 
+
+### Train on DTU Cluster (GPU)
+* Follow the instructions in the instruction file "documents/DTU_cluster_Instructions.pdf"
+* Adapt the selected training script from src/models: GPU = True
+* To select different training scripts for training, change the last line in the "submit.sh" file
 
 ## Evaluation
+* Select one of the jupyter notebooks to evaluate your model and visualize the performance in a plot
+* Change the model paths to the path of your trained model
 
 ## Visualization
+* The notebook "notebooks/Visualize.ipynb" shows some examples on how to visualize the recorded EEG data
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
