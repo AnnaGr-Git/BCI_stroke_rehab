@@ -96,14 +96,29 @@ Check the [Conda website](https://www.anaconda.com/) for how to install it.
 ### Measurement Setup
 Follow the instructions in file documents/measurement_rules.txt
 
-### Run Measurement
+### Record Measurement
 1. Open the Open-BCI UI and start the measurements
 2. Use the python script "src/data/game_record_data.py"
    * Define user name with "USER = name"
    * Define the used channels in correct defined order with "CHANNELS = your channel names"
    * Define the sample rate with "SAMPLE_RATE = your sample rate" (OpenBCI samples with 125 Hz with 16 channels)
 
-## Train Model
+## Create BCI-Dataset
+For own recordings, use the notebook "notebooks/CreatePhysioNet_Dataset.ipynb"; for PhysioNet data, use the notebook "notebooks/CreatePhysioNet_Dataset.ipynb"
+1. A class structure with EEG-recordings (from csv or mat files) and corresponding information is created
+2. Data can be easily validated and bandpass filtered
+3. You can create CSP-features and plot them
+
+## Create Training Set
+After collecting the measurements in a dataset, a training set should be created before starting with the training of the model.
+The notebook "notebooks/Create_Trainingset.ipynb" shows an example on how to do that.
+You can choose between different options on how the label will be saved and how big the test size is.
+
+## Train Model ML
+To extract CSP-features from the data and classify them with different ML-methods, the notebook "notebooks/Train_Classifiers.ipynb" can be used.
+It includes LDA, QDA, XGB, SVM, and a simple NN.
+
+## Train Model DL
 ### Train on your own Computer (CPU)
 * Adapt the selected training script from src/models: GPU = False
 * Run the chosen training script in your favorite code editor 
@@ -114,10 +129,16 @@ Follow the instructions in file documents/measurement_rules.txt
 * To select different training scripts for training, change the last line in the "submit.sh" file
 
 ## Evaluation
-* Select one of the jupyter notebooks to evaluate your model and visualize the performance in a plot
-* Change the model paths to the path of your trained model
+* Notebook "notebooks/Results_Evaluation.ipynb" visualizes the trained model performances in plots. These plots were used in the report.
+* If you don't have the model performance files from training or you want to evaluate the model on your own:
+  Select one of the following jupyter notebooks, depending on what to evaluate:
+  (Change the model paths to the path of your trained model!)
+    - Model Performance on selected test data: "notebooks/Evaluate_1D_CNN.ipynb"
+    - Model Performance with different selected channel pairs: "notebooks/Evaluate_1D_CNN_channel_pairs.ipynb"
+    - Model Performance with different selected test subjects: "notebooks/Evaluate_1D_CNN_test_subjects.ipynb"
+    - Model Performance evaluated with 10-fold-Cross-Validation or Leave-One-Subject-Out: "notebooks/Evaluation.ipynb"
 
 ## Visualization
-* The notebook "notebooks/Visualize.ipynb" shows some examples on how to visualize the recorded EEG data
+* The notebook "notebooks/Visualize.ipynb" shows some examples of how to visualize the recorded EEG data
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
